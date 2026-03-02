@@ -11,6 +11,8 @@ AGENT_LABEL="com.counttongula.eyebreak"
 AGENT_DIR="$HOME/Library/LaunchAgents"
 AGENT_PLIST="$AGENT_DIR/$AGENT_LABEL.plist"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+APP_NAME="Count Tongula's Eye Break"
+APP_BUNDLE="$INSTALL_DIR/$APP_NAME.app"
 
 ok()   { echo "  ✅ $1"; }
 info() { echo "  🦇 $1"; }
@@ -33,7 +35,6 @@ swiftc -O -o "$REPO_DIR/scripts/eye_break_ui" "$REPO_DIR/scripts/eye_break_ui.sw
 ok "Binary compiled"
 
 # ── Symlink scripts (git pull = instant update) ──
-DAEMON_NAME="Count Tongula's Eye Break"
 info "Symlinking to $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
 for script in "$REPO_DIR/scripts/"*.sh; do
@@ -44,9 +45,6 @@ done
 # Symlink the compiled binary
 rm -f "$INSTALL_DIR/eye_break_ui"
 ln -s "$REPO_DIR/scripts/eye_break_ui" "$INSTALL_DIR/eye_break_ui"
-# Friendly-named symlink for Login Items display
-rm -f "$INSTALL_DIR/$DAEMON_NAME"
-ln -s "$REPO_DIR/scripts/eye_break_daemon.sh" "$INSTALL_DIR/$DAEMON_NAME"
 ok "Scripts symlinked → $REPO_DIR/scripts/"
 
 # ── Symlink assets ──
@@ -54,6 +52,46 @@ info "Symlinking assets ..."
 rm -rf "$INSTALL_DIR/assets"
 ln -s "$REPO_DIR/assets" "$INSTALL_DIR/assets"
 ok "Assets symlinked → $REPO_DIR/assets/"
+
+# ── Build .app bundle (for Login Items name + icon) ──
+info "Building app bundle ..."
+rm -rf "$APP_BUNDLE"
+mkdir -p "$APP_BUNDLE/Contents/MacOS"
+mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+# Launcher script inside the .app
+cat > "$APP_BUNDLE/Contents/MacOS/run" <<'LAUNCHER'
+#!/bin/bash
+SCRIPT_DIR="$HOME/.eye-break"
+exec "$SCRIPT_DIR/eye_break_daemon.sh"
+LAUNCHER
+chmod +x "$APP_BUNDLE/Contents/MacOS/run"
+
+# Copy icon
+cp "$REPO_DIR/assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+
+# Info.plist
+cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>$APP_NAME</string>
+    <key>CFBundleDisplayName</key>
+    <string>$APP_NAME</string>
+    <key>CFBundleIdentifier</key>
+    <string>$AGENT_LABEL</string>
+    <key>CFBundleExecutable</key>
+    <string>run</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>
+PLIST
+ok "App bundle created"
 
 # ── Create LaunchAgent ──
 info "Setting up LaunchAgent ..."
@@ -68,7 +106,7 @@ cat > "$AGENT_PLIST" <<EOF
     <string>$AGENT_LABEL</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$INSTALL_DIR/Count Tongula's Eye Break</string>
+        <string>$APP_BUNDLE/Contents/MacOS/run</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
