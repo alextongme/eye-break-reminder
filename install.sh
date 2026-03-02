@@ -33,6 +33,7 @@ swiftc -O -o "$REPO_DIR/scripts/eye_break_ui" "$REPO_DIR/scripts/eye_break_ui.sw
 ok "Binary compiled"
 
 # ── Symlink scripts (git pull = instant update) ──
+DAEMON_NAME="Count Tongula's Eye Break"
 info "Symlinking to $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
 for script in "$REPO_DIR/scripts/"*.sh; do
@@ -43,6 +44,9 @@ done
 # Symlink the compiled binary
 rm -f "$INSTALL_DIR/eye_break_ui"
 ln -s "$REPO_DIR/scripts/eye_break_ui" "$INSTALL_DIR/eye_break_ui"
+# Friendly-named symlink for Login Items display
+rm -f "$INSTALL_DIR/$DAEMON_NAME"
+ln -s "$REPO_DIR/scripts/eye_break_daemon.sh" "$INSTALL_DIR/$DAEMON_NAME"
 ok "Scripts symlinked → $REPO_DIR/scripts/"
 
 # ── Symlink assets ──
@@ -64,7 +68,7 @@ cat > "$AGENT_PLIST" <<EOF
     <string>$AGENT_LABEL</string>
     <key>ProgramArguments</key>
     <array>
-        <string>$INSTALL_DIR/eye_break_daemon.sh</string>
+        <string>$INSTALL_DIR/Count Tongula's Eye Break</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
