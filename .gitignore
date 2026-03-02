@@ -3,3 +3,4 @@
 .env
 *.pem
 *.key
+scripts/eye_break_ui

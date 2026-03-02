@@ -10,6 +10,7 @@ INSTALL_DIR="$HOME/.eye-break"
 AGENT_LABEL="com.counttongula.eyebreak"
 AGENT_DIR="$HOME/Library/LaunchAgents"
 AGENT_PLIST="$AGENT_DIR/$AGENT_LABEL.plist"
+REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 ok()   { echo "  ✅ $1"; }
 info() { echo "  🦇 $1"; }
@@ -17,16 +18,21 @@ fail() { echo "  ❌ $1" >&2; exit 1; }
 
 # ── Preflight ──
 [[ "$(uname)" == "Darwin" ]] || fail "This only works on macOS."
-command -v osascript >/dev/null || fail "osascript not found."
 command -v python3 >/dev/null || fail "python3 not found."
+command -v swiftc  >/dev/null || fail "swiftc not found (install Xcode Command Line Tools)."
 
 echo ""
 echo "  🧛 Count Tongula's Eye Break Reminder"
 echo "  ─────────────────────────────────────"
 echo ""
 
+# ── Compile Swift UI ──
+info "Compiling Dracula UI ..."
+swiftc -O -o "$REPO_DIR/scripts/eye_break_ui" "$REPO_DIR/scripts/eye_break_ui.swift" \
+    -framework Cocoa 2>&1
+ok "Binary compiled"
+
 # ── Symlink scripts (git pull = instant update) ──
-REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 info "Symlinking to $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
 for script in "$REPO_DIR/scripts/"*.sh; do
@@ -34,7 +40,16 @@ for script in "$REPO_DIR/scripts/"*.sh; do
     rm -f "$target"
     ln -s "$script" "$target"
 done
+# Symlink the compiled binary
+rm -f "$INSTALL_DIR/eye_break_ui"
+ln -s "$REPO_DIR/scripts/eye_break_ui" "$INSTALL_DIR/eye_break_ui"
 ok "Scripts symlinked → $REPO_DIR/scripts/"
+
+# ── Symlink assets ──
+info "Symlinking assets ..."
+rm -rf "$INSTALL_DIR/assets"
+ln -s "$REPO_DIR/assets" "$INSTALL_DIR/assets"
+ok "Assets symlinked → $REPO_DIR/assets/"
 
 # ── Create LaunchAgent ──
 info "Setting up LaunchAgent ..."
