@@ -35,7 +35,7 @@ Follows the [20-20-20 rule](https://www.healthline.com/health/eye-health/20-20-2
 Requires Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
-git clone https://github.com/alextongme/eye-break-reminder.git
+git clone https://github.com/alextongme/count-tongulas-eye-break.git
 cd eye-break-reminder
 ./install.sh
 ```
