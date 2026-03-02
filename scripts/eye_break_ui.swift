@@ -311,9 +311,9 @@ class EyeBreakController: NSObject, NSWindowDelegate {
 
     // ── Phase: Prompt ──
     func showPrompt(allowSnooze: Bool) {
-        heading.stringValue  = Quotes.random(Quotes.prompt)
-        body.stringValue     = "Time for an eye break!"
-        detail.stringValue   = "Look at something 20 feet away for 20 seconds."
+        heading.stringValue  = "Time for an eye break!"
+        body.stringValue     = "Look at something 20 feet away for 20 seconds."
+        detail.stringValue   = ""
 
         body.isHidden = false; detail.isHidden = false
         countdownLbl.isHidden = true; countdownSub.isHidden = true; progressBar.isHidden = true
@@ -414,7 +414,20 @@ func captureWindow(_ window: NSWindow, to path: String) {
     guard let view = window.contentView else { return }
     guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
     view.cacheDisplay(in: view.bounds, to: rep)
-    guard let data = rep.representation(using: .png, properties: [:]) else { return }
+
+    let size = view.bounds.size
+    let radius: CGFloat = 10
+    let rounded = NSImage(size: size)
+    rounded.lockFocus()
+    let clip = NSBezierPath(roundedRect: NSRect(origin: .zero, size: size),
+                            xRadius: radius, yRadius: radius)
+    clip.addClip()
+    rep.draw(in: NSRect(origin: .zero, size: size))
+    rounded.unlockFocus()
+
+    guard let tiff = rounded.tiffRepresentation,
+          let bmp = NSBitmapImageRep(data: tiff),
+          let data = bmp.representation(using: .png, properties: [:]) else { return }
     try? data.write(to: URL(fileURLWithPath: path))
 }
 
