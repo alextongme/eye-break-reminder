@@ -184,6 +184,17 @@ scripts/Sources/*.swift  -->  eye_break_ui (single binary, swiftc -O)
                               +-- Preferences (UserDefaults)
 ```
 
+## Releasing
+
+Tag a version and push — GitHub Actions handles the rest (builds the `.app`, creates a GitHub Release, and updates the Homebrew Cask formula).
+
+```bash
+git tag v0.3.0
+git push --tags
+```
+
+**One-time setup:** the workflow needs a `CASK_PAT` repository secret with write access to `alextongme/homebrew-cask`. See [GitHub fine-grained tokens](https://github.com/settings/tokens?type=beta).
+
 ## Requirements
 
 - macOS 12+ (Monterey or later)
