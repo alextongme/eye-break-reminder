@@ -1,5 +1,13 @@
 import Cocoa
 
+// ── Single-instance guard ────────────────────────────────────────────
+// Acquire an exclusive file lock; exit immediately if another instance holds it.
+let lockFD = open("/tmp/com.counttongula.eyebreak.lock", O_WRONLY | O_CREAT, 0o600)
+if lockFD < 0 || flock(lockFD, LOCK_EX | LOCK_NB) != 0 {
+    fputs("Another instance is already running.\n", stderr)
+    exit(0)
+}
+
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)  // No Dock icon
 
@@ -65,7 +73,7 @@ if args.contains("--demo") {
 } else if args.contains("--screenshot-all") {
     let outdir = args.last(where: { $0.hasPrefix("--outdir=") })
         .map { String($0.dropFirst("--outdir=".count)) } ?? "/tmp"
-    var delay: Double = 0.5
+    let delay: Double = 0.5
 
     // 1. Onboarding
     let onboarding = OnboardingController()
@@ -132,6 +140,55 @@ if args.contains("--demo") {
                 }
             }
         }
+    }
+} else if args.contains("--gallery") {
+    // Gallery mode: arrow keys to cycle through all screens
+    print("Gallery mode: → next, ← prev, Esc quit")
+
+    let galleryScreens: [(BreakType, String)] = [
+        (.eye, "prompt"), (.eye, "countdown"), (.eye, "complete"),
+        (.long, "prompt"), (.long, "countdown"), (.long, "complete"),
+    ]
+    var galleryIndex = 0
+    var galleryCtrl: BreakWindowController?
+
+    func showGallery() {
+        // Clean up previous controller
+        galleryCtrl?.timer?.invalidate()
+        galleryCtrl?.timer = nil
+        galleryCtrl?.overlayWindows.forEach { $0.orderOut(nil) }
+        galleryCtrl?.window.orderOut(nil)
+
+        let (type, screen) = galleryScreens[galleryIndex]
+        let ctrl = BreakWindowController(type: type, allowSnooze: true)
+
+        if screen == "countdown" {
+            ctrl.showCountdown()
+            ctrl.timer?.invalidate()
+            ctrl.timer = nil
+        } else if screen == "complete" {
+            ctrl.showComplete()
+        }
+
+        galleryCtrl = ctrl
+        let typeName = type == .eye ? "eye" : "long"
+        print("  [\(galleryIndex + 1)/\(galleryScreens.count)] \(typeName) — \(screen)")
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    showGallery()
+
+    NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        switch event.keyCode {
+        case 124 where galleryIndex < galleryScreens.count - 1:
+            galleryIndex += 1; showGallery()
+        case 123 where galleryIndex > 0:
+            galleryIndex -= 1; showGallery()
+        case 53:
+            NSApp.terminate(nil)
+        default: break
+        }
+        return event
     }
 } else if args.contains("--trigger-long") {
     // Interactive long break — shows the real window you can interact with

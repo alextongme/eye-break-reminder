@@ -103,6 +103,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
 
         menu.addItem(NSMenuItem.separator())
 
+        let websiteItem = NSMenuItem(title: "Visit alextong.me", action: #selector(openWebsite), keyEquivalent: "")
+        websiteItem.target = self
+        menu.addItem(websiteItem)
+
+        menu.addItem(NSMenuItem.separator())
+
         let quitItem = NSMenuItem(title: "Quit Count Tongula", action: #selector(quitApp), keyEquivalent: "")
         quitItem.target = self
         menu.addItem(quitItem)
@@ -286,6 +292,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
         onboardingController = OnboardingController()
         onboardingController?.window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc func openWebsite() {
+        NSWorkspace.shared.open(URL(string: "https://alextong.me")!)
     }
 
     @objc func quitApp() {

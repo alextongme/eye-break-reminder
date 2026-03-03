@@ -26,6 +26,7 @@ class SettingsWindowController: NSObject {
     var dndToggle: NSSwitch!
     var idleToggle: NSSwitch!
     var fullscreenToggle: NSSwitch!
+    var cloudsToggle: NSSwitch!
     var launchToggle: NSSwitch!
     var longBreakToggle: NSSwitch!
     var longBreakEverySlider: NSSlider!
@@ -177,6 +178,11 @@ class SettingsWindowController: NSObject {
             target: self, action: #selector(fullscreenToggleChanged))
         y -= rowStep
 
+        cloudsToggle = addToggleRow(
+            "Cloud effect on break", x: rightX, y: y, to: cv,
+            target: self, action: #selector(cloudsToggleChanged))
+        y -= rowStep
+
         launchToggle = addToggleRow(
             "Launch at login", x: rightX, y: y, to: cv,
             target: self, action: #selector(launchToggleChanged))
@@ -293,6 +299,7 @@ class SettingsWindowController: NSObject {
         dndToggle.state = prefs.dndAware ? .on : .off
         idleToggle.state = prefs.idleDetectionEnabled ? .on : .off
         fullscreenToggle.state = prefs.fullscreenOverlay ? .on : .off
+        cloudsToggle.state = prefs.cloudsEnabled ? .on : .off
         launchToggle.state = prefs.launchAtLogin ? .on : .off
 
         longBreakToggle.state = prefs.longBreakEnabled ? .on : .off
@@ -354,6 +361,10 @@ class SettingsWindowController: NSObject {
 
     @objc func fullscreenToggleChanged() {
         Preferences.shared.fullscreenOverlay = fullscreenToggle.state == .on
+    }
+
+    @objc func cloudsToggleChanged() {
+        Preferences.shared.cloudsEnabled = cloudsToggle.state == .on
     }
 
     @objc func launchToggleChanged() {

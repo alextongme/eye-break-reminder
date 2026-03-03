@@ -1,4 +1,5 @@
 import Cocoa
+import Lottie
 
 // MARK: - Enums & Protocol
 
@@ -38,9 +39,17 @@ class BreakWindowController: NSObject, NSWindowDelegate {
     var primaryBtn: HoverButton!
     var secondaryBtn: HoverButton!
     var dismissBtn: HoverLink!
+    var lottieView: LottieAnimationView?
+    private var animationFiles: [String] = []
+    private var unusedAnimations: [String] = []
 
     var primaryCenterX: NSLayoutConstraint!
     var primaryPaired: NSLayoutConstraint!
+    var dismissAtBottom: NSLayoutConstraint!
+    var dismissBelowProgress: NSLayoutConstraint!
+    var mascotTopFixed: NSLayoutConstraint!
+    var countdownCentering: [NSLayoutConstraint] = []
+
 
     var secondsLeft: Int
     var timer: Timer?
@@ -62,7 +71,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
 
         // Main window
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 480),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 520),
             styleMask: [.titled, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -125,6 +134,19 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             action: #selector(dismissTapped)
         )
 
+        // Discover all Lottie animation files
+        let animDir = assetPath("animations")
+        if let contents = try? FileManager.default.contentsOfDirectory(atPath: animDir) {
+            animationFiles = contents.filter { $0.hasSuffix(".json") }
+                .map { "\(animDir)/\($0)" }
+        }
+
+        // Create the animation view (animation loaded per-screen in loadRandomAnimation)
+        let av = LottieAnimationView()
+        av.loopMode = .loop
+        av.translatesAutoresizingMaskIntoConstraints = false
+        self.lottieView = av
+
         layout()
         showPrompt()
 
@@ -167,6 +189,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
                   progressBar, primaryBtn!, secondaryBtn!, dismissBtn!] as [NSView] {
             cv.addSubview(v)
         }
+        if let lv = lottieView { cv.addSubview(lv) }
 
         // Multi-line labels — set preferredMaxLayoutWidth so text wraps
         // instead of expanding the window (460 - 64px padding = 396)
@@ -179,13 +202,12 @@ class BreakWindowController: NSObject, NSWindowDelegate {
 
         NSLayoutConstraint.activate([
             // Mascot
-            mascot.topAnchor.constraint(equalTo: cv.topAnchor, constant: 36),
             mascot.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
-            mascot.widthAnchor.constraint(equalToConstant: 110),
-            mascot.heightAnchor.constraint(equalToConstant: 110),
+            mascot.widthAnchor.constraint(equalToConstant: 90),
+            mascot.heightAnchor.constraint(equalToConstant: 90),
 
             // Heading
-            heading.topAnchor.constraint(equalTo: mascot.bottomAnchor, constant: 36),
+            heading.topAnchor.constraint(equalTo: mascot.bottomAnchor, constant: 20),
             heading.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 32),
             heading.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -32),
 
@@ -200,7 +222,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             detail.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -40),
 
             // Countdown label
-            countdownLbl.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 8),
+            countdownLbl.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 20),
             countdownLbl.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
 
             // Countdown sub
@@ -208,7 +230,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             countdownSub.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
 
             // Progress bar
-            progressBar.topAnchor.constraint(equalTo: countdownSub.bottomAnchor, constant: 14),
+            progressBar.topAnchor.constraint(equalTo: countdownSub.bottomAnchor, constant: 24),
             progressBar.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
             progressBar.widthAnchor.constraint(equalToConstant: 300),
             progressBar.heightAnchor.constraint(equalToConstant: 6),
@@ -225,14 +247,83 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             secondaryBtn.heightAnchor.constraint(equalToConstant: 42),
 
             // Dismiss link
-            dismissBtn.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -18),
             dismissBtn.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
         ])
+
+        // Mascot top: fixed for prompt/complete, flexible for countdown centering
+        mascotTopFixed = mascot.topAnchor.constraint(equalTo: cv.topAnchor, constant: 24)
+
+        dismissAtBottom = dismissBtn.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -18)
+        dismissBelowProgress = dismissBtn.topAnchor.constraint(equalTo: progressBar.bottomAnchor, constant: 40)
+
+        // Countdown vertical centering: equal spacers above mascot and below dismiss
+        let topSpacer = NSLayoutGuide()
+        let bottomSpacer = NSLayoutGuide()
+        cv.addLayoutGuide(topSpacer)
+        cv.addLayoutGuide(bottomSpacer)
+        countdownCentering = [
+            topSpacer.topAnchor.constraint(equalTo: cv.topAnchor),
+            topSpacer.bottomAnchor.constraint(equalTo: mascot.topAnchor),
+            bottomSpacer.topAnchor.constraint(equalTo: dismissBtn.bottomAnchor),
+            bottomSpacer.bottomAnchor.constraint(equalTo: cv.bottomAnchor),
+            topSpacer.heightAnchor.constraint(equalTo: bottomSpacer.heightAnchor),
+        ]
+
+        // Lottie animation (vertically centered between detail text and buttons)
+        if let lv = lottieView {
+            let spacer = NSLayoutGuide()
+            cv.addLayoutGuide(spacer)
+            NSLayoutConstraint.activate([
+                spacer.topAnchor.constraint(equalTo: detail.bottomAnchor),
+                spacer.bottomAnchor.constraint(equalTo: primaryBtn.topAnchor),
+                lv.centerYAnchor.constraint(equalTo: spacer.centerYAnchor, constant: -10),
+                lv.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+                lv.widthAnchor.constraint(equalToConstant: 180),
+                lv.heightAnchor.constraint(equalToConstant: 180),
+            ])
+        }
 
         // Paired layout: two buttons side by side
         primaryPaired = primaryBtn.trailingAnchor.constraint(equalTo: cv.centerXAnchor, constant: -8)
         // Centered layout: single button
         primaryCenterX = primaryBtn.centerXAnchor.constraint(equalTo: cv.centerXAnchor)
+    }
+
+    private let fullHeight: CGFloat = 520
+
+    private func resizeWindow(to height: CGFloat) {
+        guard let screen = window.screen ?? NSScreen.main else { return }
+        let sf = screen.visibleFrame
+        var frame = window.frame
+        frame.size.height = height
+        frame.origin.x = sf.minX + (sf.width - frame.width) / 2
+        frame.origin.y = sf.minY + (sf.height - frame.height) / 2
+        window.setFrame(frame, display: true)
+    }
+
+    private func countdownFittingHeight() -> CGFloat {
+        let headingH = heading.intrinsicContentSize.height
+        let countdownH = countdownLbl.intrinsicContentSize.height
+        let subH = countdownSub.intrinsicContentSize.height
+        let dismissH = dismissBtn.intrinsicContentSize.height
+        // mascot(90) + gap(20) + heading + gap(20) + countdown + gap(-2) + sub
+        // + gap(24) + progress(6) + gap(40) + dismiss
+        let content = 90 + 20 + headingH + 20 + countdownH + (-2) + subH + 24 + 6 + 40 + dismissH
+        return content + 70  // 35px padding top + bottom
+    }
+
+    // MARK: - Animation
+
+    private func loadRandomAnimation() {
+        guard let lv = lottieView, !animationFiles.isEmpty else { return }
+        if unusedAnimations.isEmpty {
+            unusedAnimations = animationFiles.shuffled()
+        }
+        let path = unusedAnimations.removeLast()
+        if let animation = LottieAnimation.filepath(path) {
+            lv.animation = animation
+            lv.play()
+        }
     }
 
     // MARK: - Screen States
@@ -262,6 +353,15 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         primaryBtn.isHidden = false
 
         dismissBtn.isHidden = false
+        dismissBelowProgress.isActive = false
+        dismissAtBottom.isActive = true
+        NSLayoutConstraint.deactivate(countdownCentering)
+        mascotTopFixed.isActive = true
+
+        resizeWindow(to: fullHeight)
+
+        lottieView?.isHidden = false
+        loadRandomAnimation()
 
         if allowSnooze {
             secondaryBtn.isHidden = false
@@ -292,6 +392,15 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         primaryBtn.isHidden = true
         secondaryBtn.isHidden = true
         dismissBtn.isHidden = false
+        dismissAtBottom.isActive = false
+        dismissBelowProgress.isActive = true
+        mascotTopFixed.isActive = false
+        NSLayoutConstraint.activate(countdownCentering)
+
+        resizeWindow(to: countdownFittingHeight())
+
+        lottieView?.isHidden = true
+        lottieView?.stop()
 
         updateCountdown()
 
@@ -349,6 +458,15 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         primaryCenterX.isActive = true
         secondaryBtn.isHidden = true
         dismissBtn.isHidden = true
+        dismissBelowProgress.isActive = false
+        dismissAtBottom.isActive = true
+        NSLayoutConstraint.deactivate(countdownCentering)
+        mascotTopFixed.isActive = true
+
+        resizeWindow(to: fullHeight)
+
+        lottieView?.isHidden = false
+        loadRandomAnimation()
 
         let delay = Preferences.shared.autoQuitDelay
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(delay)) { [weak self] in
@@ -419,7 +537,57 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             panel.isMovableByWindowBackground = false
             panel.orderFront(nil)
             overlayWindows.append(panel)
+
+            if Preferences.shared.cloudsEnabled {
+                addOverlayClouds(to: panel, screenFrame: screen.frame)
+            }
         }
+    }
+
+    private func addOverlayClouds(to panel: NSPanel, screenFrame: NSRect) {
+        guard let cv = panel.contentView else { return }
+        cv.wantsLayer = true
+        cv.layer?.masksToBounds = true
+
+        let cloudPath = assetPath("clouds.png")
+        guard let cloudImage = NSImage(contentsOfFile: cloudPath),
+              let cgImage = cloudImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else { return }
+
+        let h = screenFrame.height
+        let texW = CGFloat(cgImage.width)
+
+        // Two copies side by side for seamless scrolling
+        let container = CALayer()
+        container.frame = CGRect(x: 0, y: 0, width: texW * 2, height: h)
+
+        for i in 0..<2 {
+            let tile = CALayer()
+            tile.frame = CGRect(x: CGFloat(i) * texW, y: 0, width: texW, height: h)
+            tile.contents = cgImage
+            tile.contentsGravity = .resizeAspectFill
+            container.addSublayer(tile)
+        }
+
+        container.opacity = 0
+        cv.layer?.addSublayer(container)
+
+        // Start shifted left so clouds fill the screen, scroll right for drift effect
+        let scroll = CABasicAnimation(keyPath: "position.x")
+        scroll.fromValue = container.position.x - texW
+        scroll.toValue = container.position.x
+        scroll.duration = 80
+        scroll.repeatCount = .infinity
+        container.add(scroll, forKey: "scroll")
+
+        // Fade in
+        let fadeIn = CABasicAnimation(keyPath: "opacity")
+        fadeIn.fromValue = 0
+        fadeIn.toValue = 0.35
+        fadeIn.duration = 2.5
+        fadeIn.fillMode = .forwards
+        fadeIn.isRemovedOnCompletion = false
+        container.add(fadeIn, forKey: "fadeIn")
     }
 
     // MARK: - Mascot Animation

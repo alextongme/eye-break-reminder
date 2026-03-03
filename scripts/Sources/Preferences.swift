@@ -10,7 +10,7 @@ class Preferences {
         case breakInterval, breakDuration, snoozeDuration, autoQuitDelay
         case soundEnabled, promptSound, completeSound
         case dndAware, idleDetectionEnabled, idleThreshold
-        case launchAtLogin, fullscreenOverlay
+        case launchAtLogin, fullscreenOverlay, cloudsEnabled
         case longBreakEnabled, longBreakEveryN, longBreakDuration
         case hasCompletedOnboarding
     }
@@ -31,6 +31,7 @@ class Preferences {
             Key.idleThreshold.rawValue: 300,
             Key.launchAtLogin.rawValue: true,
             Key.fullscreenOverlay.rawValue: true,
+            Key.cloudsEnabled.rawValue: true,
             Key.longBreakEnabled.rawValue: true,
             Key.longBreakEveryN.rawValue: 3,
             Key.longBreakDuration.rawValue: 300,
@@ -100,6 +101,11 @@ class Preferences {
     var fullscreenOverlay: Bool {
         get { defaults.bool(forKey: Key.fullscreenOverlay.rawValue) }
         set { defaults.set(newValue, forKey: Key.fullscreenOverlay.rawValue); notify() }
+    }
+
+    var cloudsEnabled: Bool {
+        get { defaults.bool(forKey: Key.cloudsEnabled.rawValue) }
+        set { defaults.set(newValue, forKey: Key.cloudsEnabled.rawValue); notify() }
     }
 
     var longBreakEnabled: Bool {

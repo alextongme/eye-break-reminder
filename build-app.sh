@@ -18,7 +18,7 @@ info() { echo "  🦇 $1"; }
 fail() { echo "  ❌ $1" >&2; exit 1; }
 
 [[ "$(uname)" == "Darwin" ]] || fail "This only works on macOS."
-command -v swiftc >/dev/null || fail "swiftc not found (install Xcode Command Line Tools)."
+command -v swift >/dev/null || fail "swift not found (install Xcode Command Line Tools)."
 
 echo ""
 echo "  🧛 Building Count Tongula's Eye Break v${VERSION}"
@@ -30,10 +30,9 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 # ── Compile ──
-info "Compiling ..."
-swiftc -O -o "$BUILD_DIR/eye_break_ui" \
-    "$REPO_DIR/scripts/Sources/"*.swift \
-    -framework Cocoa -framework IOKit 2>&1
+info "Compiling (Swift Package Manager) ..."
+swift build -c release --package-path "$REPO_DIR" 2>&1
+cp "$REPO_DIR/.build/release/eye_break_ui" "$BUILD_DIR/eye_break_ui"
 ok "Binary compiled"
 
 # ── Build .app bundle ──
@@ -47,7 +46,14 @@ cp "$BUILD_DIR/eye_break_ui" "$APP_BUNDLE/Contents/MacOS/eye_break_ui"
 # Copy assets
 cp "$REPO_DIR/assets/alex_final.png" "$APP_BUNDLE/Contents/Resources/assets/"
 cp "$REPO_DIR/assets/dracula.png" "$APP_BUNDLE/Contents/Resources/assets/"
+[ -f "$REPO_DIR/assets/clouds.png" ] && cp "$REPO_DIR/assets/clouds.png" "$APP_BUNDLE/Contents/Resources/assets/"
 cp "$REPO_DIR/assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+
+# Copy Lottie animations
+if [ -d "$REPO_DIR/assets/animations" ]; then
+    mkdir -p "$APP_BUNDLE/Contents/Resources/assets/animations"
+    cp "$REPO_DIR/assets/animations/"*.json "$APP_BUNDLE/Contents/Resources/assets/animations/"
+fi
 
 # Launcher script that sets up LaunchAgent on first run, then executes the binary
 cat > "$APP_BUNDLE/Contents/MacOS/run" <<'LAUNCHER'

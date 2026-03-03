@@ -36,7 +36,13 @@ func assetPath(_ name: String) -> String {
     let bundleResources = binaryDir
         .deletingLastPathComponent()
         .appendingPathComponent("Resources/assets/\(name)").path
-    return bundleResources
+    if FileManager.default.fileExists(atPath: bundleResources) {
+        return bundleResources
+    }
+
+    // Check current working directory (development with SPM)
+    let cwdFallback = FileManager.default.currentDirectoryPath + "/assets/\(name)"
+    return cwdFallback
 }
 
 // ─── Label Factory ───────────────────────────────────────────────────

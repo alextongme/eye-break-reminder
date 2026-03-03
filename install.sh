@@ -20,7 +20,7 @@ fail() { echo "  ❌ $1" >&2; exit 1; }
 
 # ── Preflight ──
 [[ "$(uname)" == "Darwin" ]] || fail "This only works on macOS."
-command -v swiftc  >/dev/null || fail "swiftc not found (install Xcode Command Line Tools)."
+command -v swift >/dev/null || fail "swift not found (install Xcode Command Line Tools)."
 
 echo ""
 echo "  🧛 Count Tongula's Eye Break Reminder"
@@ -28,10 +28,8 @@ echo "  ────────────────────────
 echo ""
 
 # ── Compile Swift UI ──
-info "Compiling Dracula UI ..."
-swiftc -O -o "$REPO_DIR/scripts/eye_break_ui" \
-    "$REPO_DIR/scripts/Sources/"*.swift \
-    -framework Cocoa -framework IOKit 2>&1
+info "Compiling Dracula UI (Swift Package Manager) ..."
+swift build -c release --package-path "$REPO_DIR" 2>&1
 ok "Binary compiled"
 
 # ── Install binary + assets ──
@@ -39,7 +37,7 @@ info "Installing to $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
 # Symlink the compiled binary
 rm -f "$INSTALL_DIR/eye_break_ui"
-ln -s "$REPO_DIR/scripts/eye_break_ui" "$INSTALL_DIR/eye_break_ui"
+ln -s "$REPO_DIR/.build/release/eye_break_ui" "$INSTALL_DIR/eye_break_ui"
 # Strip macOS quarantine/provenance attributes
 xattr -cr "$INSTALL_DIR" 2>/dev/null || true
 ok "Binary installed → $INSTALL_DIR"

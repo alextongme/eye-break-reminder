@@ -4,5 +4,8 @@
 *.pem
 *.key
 scripts/eye_break_ui
+scripts/eye_break_test
 build/
 dist/
+.build/
+.swiftpm/
