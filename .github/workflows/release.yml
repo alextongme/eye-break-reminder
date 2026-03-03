@@ -27,10 +27,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
-          gh release create "$GITHUB_REF_NAME" \
-            "dist/CountTongulasEyeBreak-${VERSION}.zip" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes
+          if gh release view "$GITHUB_REF_NAME" &>/dev/null; then
+            echo "Release $GITHUB_REF_NAME already exists, uploading asset"
+            gh release upload "$GITHUB_REF_NAME" \
+              "dist/CountTongulasEyeBreak-${VERSION}.zip" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              "dist/CountTongulasEyeBreak-${VERSION}.zip" \
+              --title "$GITHUB_REF_NAME" \
+              --generate-notes
+          fi
 
       - name: Get SHA256
         id: sha
@@ -52,8 +58,10 @@ jobs:
           sed -i '' "s/version \".*\"/version \"${VERSION}\"/" Casks/count-tongulas-eye-break.rb
           sed -i '' "s/sha256 \".*\"/sha256 \"${SHA}\"/" Casks/count-tongulas-eye-break.rb
 
+          git diff --quiet && echo "Cask already up to date" && exit 0
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add Casks/count-tongulas-eye-break.rb
           git commit -m "Update count-tongulas-eye-break to v${VERSION}"
           git push
