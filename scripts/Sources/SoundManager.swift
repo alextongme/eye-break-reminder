@@ -12,6 +12,7 @@ class SoundManager {
 
     // Play system sounds via afplay to avoid NSSound triggering mic permission on macOS 26
     private func play(_ name: String) {
+        guard SoundManager.availableSounds.contains(name) else { return }
         let path = "/System/Library/Sounds/\(name).aiff"
         guard FileManager.default.fileExists(atPath: path) else { return }
         let task = Process()

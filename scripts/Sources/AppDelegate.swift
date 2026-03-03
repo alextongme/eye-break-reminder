@@ -471,7 +471,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate, NSMenuD
 
         guard !FileManager.default.fileExists(atPath: plistPath.path) else { return }
 
-        let binary = ProcessInfo.processInfo.arguments[0]
+        guard let binary = Bundle.main.executableURL?.path else { return }
+        let escapedBinary = binary
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&apos;")
         let plist = """
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -481,7 +487,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate, NSMenuD
             <string>com.counttongula.eyebreak</string>
             <key>ProgramArguments</key>
             <array>
-                <string>\(binary)</string>
+                <string>\(escapedBinary)</string>
             </array>
             <key>RunAtLoad</key>
             <true/>
