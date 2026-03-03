@@ -82,7 +82,7 @@ class OnboardingController: NSObject {
         // Floating animation (matches the break window)
         let floatAnim = CABasicAnimation(keyPath: "transform.translation.y")
         floatAnim.fromValue = 0
-        floatAnim.toValue = -5
+        floatAnim.toValue = -9
         floatAnim.duration = 2.0
         floatAnim.autoreverses = true
         floatAnim.repeatCount = .infinity
@@ -94,7 +94,7 @@ class OnboardingController: NSObject {
         let headingY = mascotY - 14 - headingH
         let heading = NSTextField(frame: NSRect(x: 24, y: headingY, width: W - 48, height: headingH))
         heading.stringValue = "Welcome to Count Tongula's Eye Break"
-        heading.font = NSFont.systemFont(ofSize: 20, weight: .bold)
+        heading.font = dmSans(size: 20, weight: .bold)
         heading.textColor = Drac.purple
         heading.backgroundColor = .clear
         heading.isBezeled = false
@@ -109,7 +109,7 @@ class OnboardingController: NSObject {
         let ruleY = headingY - 8 - ruleH
         let ruleLabel = NSTextField(frame: NSRect(x: 40, y: ruleY, width: W - 80, height: ruleH))
         ruleLabel.stringValue = ruleText
-        ruleLabel.font = NSFont.systemFont(ofSize: 14)
+        ruleLabel.font = dmSans(size: 14)
         ruleLabel.textColor = Drac.foreground
         ruleLabel.backgroundColor = .clear
         ruleLabel.isBezeled = false
@@ -192,7 +192,7 @@ class OnboardingController: NSObject {
     private func makeField(_ text: String, size: CGFloat, color: NSColor) -> NSTextField {
         let f = NSTextField(frame: .zero)
         f.stringValue = text
-        f.font = NSFont.systemFont(ofSize: size)
+        f.font = dmSans(size: size)
         f.textColor = color
         f.backgroundColor = .clear
         f.isBezeled = false

@@ -106,7 +106,16 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         self.heading      = makeLabel("", size: 22, weight: .bold, color: Drac.purple)
         self.body         = makeLabel("", size: 17, weight: .regular, color: Drac.foreground)
         self.detail       = makeLabel("", size: 15, weight: .medium, color: Drac.cyan)
-        self.countdownLbl = makeLabel("", size: 80, weight: .heavy, color: Drac.green)
+        self.countdownLbl = {
+        let lbl = NSTextField(labelWithString: "")
+        lbl.font = dmMono(size: 80, weight: .medium)
+        lbl.textColor = Drac.green
+        lbl.alignment = .center
+        lbl.lineBreakMode = .byWordWrapping
+        lbl.maximumNumberOfLines = 0
+        lbl.translatesAutoresizingMaskIntoConstraints = false
+        return lbl
+    }()
         self.countdownSub = makeLabel("", size: 14, weight: .regular, color: Drac.comment)
         self.progressBar  = ProgressBarView()
 
@@ -132,7 +141,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             action: #selector(snoozeTapped)
         )
         dismissBtn = HoverLink(
-            "Not now — remind me later",
+            "Not now—remind me later",
             color: Drac.comment,
             hover: Drac.pink,
             size: 13,
@@ -492,7 +501,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         }
 
         let total = CGFloat(totalDuration > 0 ? totalDuration : 1)
-        progressBar.progress = CGFloat(secondsLeft) / total
+        progressBar.progress = 1.0 - CGFloat(secondsLeft) / total
     }
 
     func showComplete() {
@@ -692,8 +701,10 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             )
             panel.backgroundColor = Drac.background.withAlphaComponent(0.85)
             panel.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue - 1)
-            panel.collectionBehavior = [.canJoinAllSpaces]
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.isMovableByWindowBackground = false
+            panel.hidesOnDeactivate = false
+            panel.setFrame(screen.frame, display: false)
             panel.alphaValue = 0
             panel.orderFront(nil)
             overlayWindows.append(panel)
@@ -706,6 +717,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             if Preferences.shared.cloudsEnabled {
                 addOverlayClouds(to: panel, screenFrame: screen.frame)
             }
+            addOverlayBats(to: panel, screenFrame: screen.frame)
         }
     }
 
@@ -719,31 +731,33 @@ class BreakWindowController: NSObject, NSWindowDelegate {
               let cgImage = cloudImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
         else { return }
 
+        let screenW = screenFrame.width
         let h = screenFrame.height
-        let texW = CGFloat(cgImage.width)
+        let imageAspect = CGFloat(cgImage.width) / CGFloat(cgImage.height)
+        let layerW = max(ceil(imageAspect * h), screenW)
 
-        // Two copies side by side for seamless scrolling
-        let container = CALayer()
-        container.frame = CGRect(x: 0, y: 0, width: texW * 2, height: h)
+        // Single image — no tiling, no seams. Pan back and forth across the screen.
+        let cloudLayer = CALayer()
+        cloudLayer.frame = CGRect(x: 0, y: 0, width: layerW, height: h)
+        cloudLayer.contents = cgImage
+        cloudLayer.contentsGravity = .resizeAspectFill
+        cloudLayer.opacity = 0
+        cv.layer?.addSublayer(cloudLayer)
 
-        for i in 0..<2 {
-            let tile = CALayer()
-            tile.frame = CGRect(x: CGFloat(i) * texW, y: 0, width: texW, height: h)
-            tile.contents = cgImage
-            tile.contentsGravity = .resizeAspectFill
-            container.addSublayer(tile)
+        let panDistance = layerW - screenW
+        if panDistance > 0 {
+            // Match the original scroll speed (~48pt/s)
+            let speed: CGFloat = 64.0
+            let duration = Double(panDistance / speed)
+            let scroll = CABasicAnimation(keyPath: "position.x")
+            scroll.fromValue = layerW / 2
+            scroll.toValue = layerW / 2 - panDistance
+            scroll.duration = max(duration, 5)
+            scroll.autoreverses = true
+            scroll.repeatCount = .infinity
+            scroll.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            cloudLayer.add(scroll, forKey: "scroll")
         }
-
-        container.opacity = 0
-        cv.layer?.addSublayer(container)
-
-        // Start shifted left so clouds fill the screen, scroll right for drift effect
-        let scroll = CABasicAnimation(keyPath: "position.x")
-        scroll.fromValue = container.position.x - texW
-        scroll.toValue = container.position.x
-        scroll.duration = 80
-        scroll.repeatCount = .infinity
-        container.add(scroll, forKey: "scroll")
 
         // Fade in
         let fadeIn = CABasicAnimation(keyPath: "opacity")
@@ -752,7 +766,272 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         fadeIn.duration = 2.5
         fadeIn.fillMode = .forwards
         fadeIn.isRemovedOnCompletion = false
-        container.add(fadeIn, forKey: "fadeIn")
+        cloudLayer.add(fadeIn, forKey: "fadeIn")
+    }
+
+    // MARK: - Overlay Bats
+
+    private func addOverlayBats(to panel: NSPanel, screenFrame: NSRect) {
+        guard let cv = panel.contentView else { return }
+
+        let screenW = screenFrame.width
+        let screenH = screenFrame.height
+        let batColor = NSColor(srgbRed: 0.10, green: 0.08, blue: 0.16, alpha: 1).cgColor
+
+        // --- Helpers ---
+
+        func addBat(
+            wingspan: CGFloat,
+            opacity: Float,
+            flapSpeed: Double,
+            fadeDelay: Double,
+            addFlight: (CAShapeLayer) -> Void
+        ) {
+            let bat = CAShapeLayer()
+            bat.fillColor = batColor
+            bat.strokeColor = nil
+            bat.opacity = 0
+            bat.path = batSilhouettePath(wingspan: wingspan, flapPhase: 0)
+            cv.layer?.addSublayer(bat)
+
+            // Wing flap
+            let wingsUp = batSilhouettePath(wingspan: wingspan, flapPhase: 0)
+            let wingsDown = batSilhouettePath(wingspan: wingspan, flapPhase: 0.5)
+            let flap = CAKeyframeAnimation(keyPath: "path")
+            flap.values = [wingsUp, wingsDown, wingsUp]
+            flap.keyTimes = [0, 0.5, 1]
+            flap.duration = flapSpeed
+            flap.repeatCount = .infinity
+            flap.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            bat.add(flap, forKey: "flap")
+
+            // Random base rotation so they aren't all perfectly level
+            let baseAngle = CGFloat.random(in: -CGFloat.pi * 0.1...CGFloat.pi * 0.1)
+            bat.setAffineTransform(CGAffineTransform(rotationAngle: baseAngle))
+
+            // Rocking rotation — ~60% of bats wobble, rest stay fixed
+            if Double.random(in: 0...1) < 0.6 {
+                let wobble = CABasicAnimation(keyPath: "transform.rotation.z")
+                wobble.fromValue = baseAngle - CGFloat.pi * CGFloat.random(in: 0.01...0.08)
+                wobble.toValue = baseAngle + CGFloat.pi * CGFloat.random(in: 0.01...0.08)
+                wobble.duration = Double.random(in: 1.5...4.0)
+                wobble.autoreverses = true
+                wobble.repeatCount = .infinity
+                wobble.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                bat.add(wobble, forKey: "wobble")
+            }
+
+            // Flight (or hover) — caller decides
+            addFlight(bat)
+
+            // Fade in
+            let fadeIn = CABasicAnimation(keyPath: "opacity")
+            fadeIn.fromValue = 0
+            fadeIn.toValue = opacity
+            fadeIn.duration = Double.random(in: 1.5...3.0)
+            fadeIn.beginTime = CACurrentMediaTime() + fadeDelay
+            fadeIn.fillMode = .both
+            fadeIn.isRemovedOnCompletion = false
+            bat.add(fadeIn, forKey: "fadeIn")
+        }
+
+        // --- Flying bats: cross the screen on varied bezier paths ---
+
+        let flyingCount = Int.random(in: 25...35)
+        for _ in 0..<flyingCount {
+            let wingspan = CGFloat.random(in: 15...110)
+            // Depth layers: smaller + fainter = behind fog, larger + brighter = in front
+            let depthFactor = Float(wingspan - 15) / 95.0   // 0 (tiny) → 1 (large)
+            let opacity = Float.random(in: 0.15...0.35) + depthFactor * 0.30
+
+            let goingRight = Bool.random()
+            let goingUp = Bool.random()
+            let startX: CGFloat = goingRight ? -wingspan * 2 : screenW + wingspan * 2
+            let endX: CGFloat = goingRight ? screenW + wingspan * 2 : -wingspan * 2
+
+            // Full vertical range — use the entire screen including edges
+            let startY = CGFloat.random(in: -wingspan...screenH + wingspan)
+            let endY = CGFloat.random(in: -wingspan...screenH + wingspan)
+
+            // Control points spread across the full screen area including edges
+            let cp1 = CGPoint(
+                x: goingRight ? CGFloat.random(in: -screenW * 0.1...screenW * 0.55)
+                              : CGFloat.random(in: screenW * 0.45...screenW * 1.1),
+                y: goingUp ? CGFloat.random(in: screenH * 0.3...screenH * 1.1)
+                           : CGFloat.random(in: -screenH * 0.1...screenH * 0.7)
+            )
+            let cp2 = CGPoint(
+                x: goingRight ? CGFloat.random(in: screenW * 0.45...screenW * 1.1)
+                              : CGFloat.random(in: -screenW * 0.1...screenW * 0.55),
+                y: CGFloat.random(in: -screenH * 0.1...screenH * 1.1)
+            )
+
+            let flightPath = CGMutablePath()
+            flightPath.move(to: CGPoint(x: startX, y: startY))
+            flightPath.addCurve(to: CGPoint(x: endX, y: endY), control1: cp1, control2: cp2)
+
+            let stagger = Double.random(in: 0...5)
+            let speed = Double.random(in: 5...20)
+
+            addBat(
+                wingspan: wingspan,
+                opacity: opacity,
+                flapSpeed: Double.random(in: 0.2...0.5),
+                fadeDelay: stagger + 0.5
+            ) { bat in
+                let flight = CAKeyframeAnimation(keyPath: "position")
+                flight.path = flightPath
+                flight.duration = speed
+                flight.repeatCount = .infinity
+                flight.calculationMode = .paced
+                flight.beginTime = CACurrentMediaTime() + stagger
+                flight.fillMode = .both
+                bat.add(flight, forKey: "flight")
+
+                // Vertical bob — ~70% of flying bats
+                if Double.random(in: 0...1) < 0.7 {
+                    let bob = CABasicAnimation(keyPath: "transform.translation.y")
+                    bob.fromValue = -wingspan * CGFloat.random(in: 0.08...0.2)
+                    bob.toValue = wingspan * CGFloat.random(in: 0.08...0.2)
+                    bob.duration = Double.random(in: 1.2...3.5)
+                    bob.autoreverses = true
+                    bob.repeatCount = .infinity
+                    bob.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    bat.add(bob, forKey: "bob")
+                }
+
+                // Depth scale — ~50% of flying bats
+                if Double.random(in: 0...1) < 0.5 {
+                    let depth = CABasicAnimation(keyPath: "transform.scale")
+                    depth.fromValue = CGFloat.random(in: 0.82...0.98)
+                    depth.toValue = CGFloat.random(in: 1.02...1.18)
+                    depth.duration = Double.random(in: 4...10)
+                    depth.autoreverses = true
+                    depth.repeatCount = .infinity
+                    depth.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    bat.add(depth, forKey: "depth")
+                }
+            }
+        }
+
+        // --- Hovering bats: stationary, just flapping in place ---
+
+        let hoverCount = Int.random(in: 10...18)
+        for _ in 0..<hoverCount {
+            let wingspan = CGFloat.random(in: 10...60)
+            let depthFactor = Float(wingspan - 10) / 50.0
+            let opacity = Float.random(in: 0.10...0.30) + depthFactor * 0.20
+
+            // Place across the full screen, including near edges and corners
+            let posX = CGFloat.random(in: screenW * 0.01...screenW * 0.99)
+            let posY = CGFloat.random(in: screenH * 0.02...screenH * 0.98)
+
+            addBat(
+                wingspan: wingspan,
+                opacity: opacity,
+                flapSpeed: Double.random(in: 0.3...0.7),
+                fadeDelay: Double.random(in: 0.5...4)
+            ) { bat in
+                bat.position = CGPoint(x: posX, y: posY)
+
+                // Gentle drift — ~75% drift around, rest stay truly fixed
+                if Double.random(in: 0...1) < 0.75 {
+                    let range = CGFloat.random(in: 3...25)
+                    let drift = CABasicAnimation(keyPath: "position")
+                    drift.fromValue = NSValue(point: NSPoint(
+                        x: posX - CGFloat.random(in: 2...range),
+                        y: posY - CGFloat.random(in: 2...range)
+                    ))
+                    drift.toValue = NSValue(point: NSPoint(
+                        x: posX + CGFloat.random(in: 2...range),
+                        y: posY + CGFloat.random(in: 2...range)
+                    ))
+                    drift.duration = Double.random(in: 3...10)
+                    drift.autoreverses = true
+                    drift.repeatCount = .infinity
+                    drift.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    bat.add(drift, forKey: "drift")
+                }
+
+                // Depth scale on hovering bats too — ~40%
+                if Double.random(in: 0...1) < 0.4 {
+                    let depth = CABasicAnimation(keyPath: "transform.scale")
+                    depth.fromValue = CGFloat.random(in: 0.88...0.97)
+                    depth.toValue = CGFloat.random(in: 1.03...1.12)
+                    depth.duration = Double.random(in: 5...12)
+                    depth.autoreverses = true
+                    depth.repeatCount = .infinity
+                    depth.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                    bat.add(depth, forKey: "depth")
+                }
+            }
+        }
+    }
+
+    /// Generates a bat silhouette CGPath with scalloped wings.
+    /// `flapPhase` 0 = wings up, 0.5 = wings down. All phases produce paths
+    /// with identical element counts so Core Animation can interpolate between them.
+    private func batSilhouettePath(wingspan: CGFloat, flapPhase: CGFloat) -> CGPath {
+        let path = CGMutablePath()
+        let half = wingspan / 2
+        let bw = wingspan * 0.06       // body half-width
+        let bh = wingspan * 0.12       // body half-height
+        let earH = wingspan * 0.055    // ear height above body top
+        let amplitude = wingspan * 0.22
+        let tipY = amplitude * cos(flapPhase * .pi * 2)
+        let dip = wingspan * 0.035     // scallop concavity depth
+
+        // Scallop finger X/Y positions (right wing; left is mirrored)
+        let s1x = half * 0.72,  s1y = tipY * 0.65
+        let s2x = half * 0.45,  s2y = tipY * 0.35
+        let s3x = half * 0.22,  s3y = tipY * 0.12
+
+        // Left wing tip
+        path.move(to: CGPoint(x: -half, y: tipY))
+
+        // Left wing leading edge → shoulder
+        path.addQuadCurve(to: CGPoint(x: -bw, y: bh * 0.4),
+                          control: CGPoint(x: -half * 0.45, y: tipY * 0.5 + bh * 0.5))
+
+        // Ears
+        path.addLine(to: CGPoint(x: -bw * 0.7, y: bh + earH))
+        path.addLine(to: CGPoint(x: -bw * 0.15, y: bh * 0.6))
+        path.addLine(to: CGPoint(x:  bw * 0.15, y: bh * 0.6))
+        path.addLine(to: CGPoint(x:  bw * 0.7,  y: bh + earH))
+
+        // Right shoulder
+        path.addLine(to: CGPoint(x: bw, y: bh * 0.4))
+
+        // Right wing leading edge → tip
+        path.addQuadCurve(to: CGPoint(x: half, y: tipY),
+                          control: CGPoint(x: half * 0.45, y: tipY * 0.5 + bh * 0.5))
+
+        // Right wing trailing edge (scalloped)
+        path.addQuadCurve(to: CGPoint(x: s1x, y: s1y - dip),
+                          control: CGPoint(x: (half + s1x) / 2, y: (tipY + s1y) / 2 - dip * 1.5))
+        path.addQuadCurve(to: CGPoint(x: s2x, y: s2y - dip),
+                          control: CGPoint(x: (s1x + s2x) / 2, y: (s1y + s2y) / 2 - dip * 1.5))
+        path.addQuadCurve(to: CGPoint(x: s3x, y: s3y - dip),
+                          control: CGPoint(x: (s2x + s3x) / 2, y: (s2y + s3y) / 2 - dip * 1.5))
+        path.addQuadCurve(to: CGPoint(x: bw * 0.5, y: -bh),
+                          control: CGPoint(x: (s3x + bw) / 2, y: -bh * 0.5 - dip))
+
+        // Body bottom
+        path.addQuadCurve(to: CGPoint(x: -bw * 0.5, y: -bh),
+                          control: CGPoint(x: 0, y: -bh * 1.2))
+
+        // Left wing trailing edge (mirror)
+        path.addQuadCurve(to: CGPoint(x: -s3x, y: s3y - dip),
+                          control: CGPoint(x: -(s3x + bw) / 2, y: -bh * 0.5 - dip))
+        path.addQuadCurve(to: CGPoint(x: -s2x, y: s2y - dip),
+                          control: CGPoint(x: -(s2x + s3x) / 2, y: (s2y + s3y) / 2 - dip * 1.5))
+        path.addQuadCurve(to: CGPoint(x: -s1x, y: s1y - dip),
+                          control: CGPoint(x: -(s1x + s2x) / 2, y: (s1y + s2y) / 2 - dip * 1.5))
+        path.addQuadCurve(to: CGPoint(x: -half, y: tipY),
+                          control: CGPoint(x: -(half + s1x) / 2, y: (tipY + s1y) / 2 - dip * 1.5))
+
+        path.closeSubpath()
+        return path
     }
 
     // MARK: - Mascot Animation
@@ -762,7 +1041,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
 
         let animation = CABasicAnimation(keyPath: "transform.translation.y")
         animation.fromValue = 0
-        animation.toValue = -5
+        animation.toValue = -9
         animation.duration = 2.0
         animation.autoreverses = true
         animation.repeatCount = .infinity

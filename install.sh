@@ -60,6 +60,9 @@ ln -sf "$INSTALL_DIR/eye_break_ui" "$APP_BUNDLE/Contents/MacOS/eye_break_ui"
 # Copy icon
 cp "$REPO_DIR/assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
+# Symlink assets into bundle Resources so assetPath() finds them when launched via open
+ln -sf "$REPO_DIR/assets" "$APP_BUNDLE/Contents/Resources/assets"
+
 # Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

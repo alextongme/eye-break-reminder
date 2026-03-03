@@ -55,6 +55,10 @@ if [ -d "$REPO_DIR/assets/animations" ]; then
     cp "$REPO_DIR/assets/animations/"*.json "$APP_BUNDLE/Contents/Resources/assets/animations/"
 fi
 
+# Copy fonts
+mkdir -p "$APP_BUNDLE/Contents/Resources/assets/fonts"
+cp "$REPO_DIR/assets/fonts/"*.ttf "$APP_BUNDLE/Contents/Resources/assets/fonts/"
+
 # Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

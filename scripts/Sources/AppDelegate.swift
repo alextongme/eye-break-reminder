@@ -1,7 +1,11 @@
 import Cocoa
-import UserNotifications
+// UserNotifications removed — triggers mic permission prompt on macOS 26
+// and crashes without a proper bundle proxy. The app shows its own break
+// window and plays sounds via NSSound, so push notifications aren't needed.
 
-class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate, NSMenuDelegate {
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     // MARK: - Properties
 
@@ -18,7 +22,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
     var settingsController: SettingsWindowController?
     var onboardingController: OnboardingController?
     var statsChartController: StatsChartWindowController?
-    var preBreakNotified = false
+
+    private var lastTickWasSpecial = false
 
     var countdownMenuItem: NSMenuItem!
     var statsMenuItem: NSMenuItem!
@@ -26,14 +31,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
     var pauseMenuItem: NSMenuItem!
     var approvalMenuItem: NSMenuItem!
 
+    // Menu items that open windows (disabled when another window is already open)
+    var historyMenuItem: NSMenuItem!
+    var settingsMenuItem: NSMenuItem!
+    var skipMenuItem: NSMenuItem!
+    var bugMenuItem: NSMenuItem!
+    var featureMenuItem: NSMenuItem!
+
     // MARK: - NSApplicationDelegate
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        registerCustomFonts()
         installLaunchAgentIfNeeded()
         setupStatusItem()
         buildMenu()
         startIdleDetector()
-        registerKeyboardShortcuts()
 
         NotificationCenter.default.addObserver(
             self,
@@ -49,7 +61,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
             object: nil
         )
 
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
 
         if !Preferences.shared.hasCompletedOnboarding {
             showOnboarding()
@@ -91,8 +102,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
         approvalMenuItem.isEnabled = false
         menu.addItem(approvalMenuItem)
 
-        let historyItem = menuItem("View History...", emoji: "📈", action: #selector(showHistory))
-        menu.addItem(historyItem)
+        historyMenuItem = menuItem("View History...", emoji: "📈", action: #selector(showHistory))
+        menu.addItem(historyMenuItem)
 
         menu.addItem(NSMenuItem.separator())
 
@@ -100,26 +111,30 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
         pauseMenuItem.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(pauseMenuItem)
 
-        let skipItem = menuItem("Take a Break Now", emoji: "👁", action: #selector(skipToBreak), key: "b")
-        skipItem.keyEquivalentModifierMask = [.command, .shift]
-        menu.addItem(skipItem)
+        skipMenuItem = menuItem("Take a Break Now", emoji: "👁", action: #selector(skipToBreak), key: "b")
+        skipMenuItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(skipMenuItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        menu.addItem(menuItem("Settings...", emoji: "⚙️", action: #selector(showSettings)))
+        settingsMenuItem = menuItem("Settings...", emoji: "⚙️", action: #selector(showSettings))
+        menu.addItem(settingsMenuItem)
 
         menu.addItem(NSMenuItem.separator())
 
         menu.addItem(menuItem("Visit alextong.me", emoji: "🌐", action: #selector(openWebsite)))
         menu.addItem(menuItem("Listen to my music", emoji: "🎵", action: #selector(openMusic)))
         menu.addItem(menuItem("Buy me a coffee", emoji: "☕", action: #selector(openDonate)))
-        menu.addItem(menuItem("Report a bug", emoji: "🐛", action: #selector(reportBug)))
-        menu.addItem(menuItem("Request a feature", emoji: "💡", action: #selector(requestFeature)))
+        bugMenuItem = menuItem("Report a bug", emoji: "🐛", action: #selector(reportBug))
+        menu.addItem(bugMenuItem)
+        featureMenuItem = menuItem("Request a feature", emoji: "💡", action: #selector(requestFeature))
+        menu.addItem(featureMenuItem)
 
         menu.addItem(NSMenuItem.separator())
 
         menu.addItem(menuItem("Quit Count Tongula", emoji: "👋", action: #selector(quitApp)))
 
+        menu.delegate = self
         statusItem.menu = menu
     }
 
@@ -154,6 +169,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
         approvalMenuItem.title = "Approval rating: \(Statistics.shared.approvalRating)%"
     }
 
+    // MARK: - NSMenuDelegate
+
+    /// Returns true if any managed window (break, settings, history, feedback) is currently visible.
+    private var hasOpenWindow: Bool {
+        if breakController != nil { return true }
+        if let w = settingsController?.window, w.isVisible { return true }
+        if let w = statsChartController?.window, w.isVisible { return true }
+        if let w = feedbackController?.window, w.isVisible { return true }
+        if let w = onboardingController?.window, w.isVisible { return true }
+        return false
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        // Force a fresh countdown so throttled values don't appear stale
+        if !isPaused && !IdleDetector.shared.shouldDeferBreak {
+            updateStatusDisplay()
+        }
+        let blocked = hasOpenWindow
+        historyMenuItem?.isEnabled = !blocked
+        settingsMenuItem?.isEnabled = !blocked
+        skipMenuItem?.isEnabled = !blocked
+        bugMenuItem?.isEnabled = !blocked
+        featureMenuItem?.isEnabled = !blocked
+    }
+
     // MARK: - Idle Detector
 
     func startIdleDetector() {
@@ -164,7 +204,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
 
     func startTimer() {
         breakTimer?.invalidate()
-        preBreakNotified = false
+
         secondsUntilBreak = Preferences.shared.breakInterval
         breakTimer = Timer.scheduledTimer(
             timeInterval: 1.0,
@@ -177,52 +217,60 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
     }
 
     @objc func tick() {
+        // Guard redundant status bar title sets in special-state paths to avoid
+        // unnecessary WindowServer redraws (the main cause of compositor stutter
+        // during macOS space-switching animations).
+
         if isPaused {
-            if let button = statusItem.button {
+            if let button = statusItem.button, button.title != "⏸️ Paused" {
                 button.title = "⏸️ Paused"
             }
-            countdownMenuItem.title = "Paused"
+            if countdownMenuItem.title != "Paused" {
+                countdownMenuItem.title = "Paused"
+            }
+            lastTickWasSpecial = true
             return
         }
 
         if IdleDetector.shared.shouldDeferBreak {
-            if let button = statusItem.button {
+            if let button = statusItem.button, button.title != "🦇 Deferred" {
                 button.title = "🦇 Deferred"
             }
-            countdownMenuItem.title = "Deferred (DND or locked)"
+            if countdownMenuItem.title != "Deferred (DND or locked)" {
+                countdownMenuItem.title = "Deferred (DND or locked)"
+            }
+            lastTickWasSpecial = true
             return
         }
 
         if IdleDetector.shared.isUserIdle {
             // User is already resting; reset the timer as a natural break
             secondsUntilBreak = Preferences.shared.breakInterval
-            preBreakNotified = false
+    
             updateStatusDisplay()
+            lastTickWasSpecial = true
             return
         }
 
         // App exclusion: pause timer while excluded app is frontmost
         if Preferences.shared.appExclusionEnabled && isExcludedAppFrontmost() {
-            if let button = statusItem.button {
+            if let button = statusItem.button, button.title != "🦇 Excluded" {
                 button.title = "🦇 Excluded"
             }
-            countdownMenuItem.title = "Paused (excluded app)"
+            if countdownMenuItem.title != "Paused (excluded app)" {
+                countdownMenuItem.title = "Paused (excluded app)"
+            }
+            lastTickWasSpecial = true
             return
         }
 
         secondsUntilBreak -= 1
+        lastTickWasSpecial = false
         updateStatusDisplay()
 
-        // Pre-break notification
-        if secondsUntilBreak == 15 && !preBreakNotified && Preferences.shared.preBreakNotifyEnabled {
-            preBreakNotified = true
-            let content = UNMutableNotificationContent()
-            content.title = "Eye break in 15 seconds"
-            content.body = "Count Tongula is preparing your eye break..."
-            content.sound = .default
-            let request = UNNotificationRequest(identifier: "preBreak", content: content, trigger: nil)
-            UNUserNotificationCenter.current().add(request)
-        }
+        // Pre-break notification: NSUserNotification removed — it triggers the
+        // mic permission prompt on macOS 26 (same underlying system as UNUserNotificationCenter).
+        // The app already shows its own break window as the notification.
 
         if secondsUntilBreak <= 0 {
             triggerBreak()
@@ -231,22 +279,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
 
     func updateStatusDisplay() {
         let timeStr = formatTime(secondsUntilBreak)
-        if let button = statusItem.button {
-            if secondsUntilBreak <= 30 && secondsUntilBreak > 0 {
-                let icon = secondsUntilBreak % 2 == 0 ? "🦇" : "👁"
-                button.title = "\(icon) \(timeStr)"
-            } else {
-                button.title = "🦇 \(timeStr)"
-            }
+        let newTitle: String
+        if secondsUntilBreak <= 30 && secondsUntilBreak > 0 {
+            let icon = secondsUntilBreak % 2 == 0 ? "🦇" : "👁"
+            newTitle = "\(icon) \(timeStr)"
+        } else {
+            newTitle = "🦇 \(timeStr)"
         }
-        countdownMenuItem.title = "Next break in \(timeStr)"
+        if let button = statusItem.button, button.title != newTitle {
+            button.title = newTitle
+        }
+        let newMenu = "Next break in \(timeStr)"
+        if countdownMenuItem.title != newMenu {
+            countdownMenuItem.title = newMenu
+        }
     }
 
     func triggerBreak() {
         breakTimer?.invalidate()
         breakTimer = nil
-        preBreakNotified = false
-        UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ["preBreak"])
+
 
         let prefs = Preferences.shared
         let breakType: BreakType
@@ -389,25 +441,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate {
     @objc func quitApp() {
         IdleDetector.shared.stopMonitoring()
         NSApp.terminate(nil)
-    }
-
-    // MARK: - Keyboard Shortcuts
-
-    func registerKeyboardShortcuts() {
-        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self else { return }
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            guard flags == [.command, .shift] else { return }
-
-            switch event.keyCode {
-            case 11: // Cmd+Shift+B
-                DispatchQueue.main.async { self.skipToBreak() }
-            case 35: // Cmd+Shift+P
-                DispatchQueue.main.async { self.togglePause() }
-            default:
-                break
-            }
-        }
     }
 
     // MARK: - Notification Handlers

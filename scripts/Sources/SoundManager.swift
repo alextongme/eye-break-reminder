@@ -10,28 +10,38 @@ class SoundManager {
         "Purr", "Sosumi", "Submarine", "Tink",
     ]
 
+    // Play system sounds via afplay to avoid NSSound triggering mic permission on macOS 26
+    private func play(_ name: String) {
+        let path = "/System/Library/Sounds/\(name).aiff"
+        guard FileManager.default.fileExists(atPath: path) else { return }
+        let task = Process()
+        task.executableURL = URL(fileURLWithPath: "/usr/bin/afplay")
+        task.arguments = [path]
+        try? task.run()
+    }
+
     func playPromptSound() {
         guard Preferences.shared.soundEnabled else { return }
-        NSSound(named: NSSound.Name(Preferences.shared.promptSound))?.play()
+        play(Preferences.shared.promptSound)
     }
 
     func playCompleteSound() {
         guard Preferences.shared.soundEnabled else { return }
-        NSSound(named: NSSound.Name(Preferences.shared.completeSound))?.play()
+        play(Preferences.shared.completeSound)
     }
 
     func playMilestoneSound() {
         guard Preferences.shared.soundEnabled else { return }
-        NSSound(named: NSSound.Name("Hero"))?.play()
+        play("Hero")
     }
 
     func playSound(_ name: String) {
         guard Preferences.shared.soundEnabled else { return }
-        NSSound(named: NSSound.Name(name))?.play()
+        play(name)
     }
 
     // Always plays regardless of soundEnabled — used for settings preview
     func previewSound(_ name: String) {
-        NSSound(named: NSSound.Name(name))?.play()
+        play(name)
     }
 }

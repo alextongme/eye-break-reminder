@@ -59,7 +59,7 @@ class IdleDetector {
     /// Cached values are read by the 1-second UI timer without blocking compositing.
     private func startBackgroundPolling() {
         let timer = DispatchSource.makeTimerSource(queue: pollQueue)
-        timer.schedule(deadline: .now(), repeating: .seconds(3), leeway: .milliseconds(500))
+        timer.schedule(deadline: .now(), repeating: .seconds(5), leeway: .milliseconds(1000))
         timer.setEventHandler { [weak self] in
             guard let self = self else { return }
             self.cachedIsScreenLocked = self.pollScreenLocked()

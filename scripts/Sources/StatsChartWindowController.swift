@@ -3,12 +3,14 @@ import Cocoa
 class StatsChartWindowController: NSObject {
     let window: NSWindow
     private var chartView: StatsChartView!
-    private var segmentedControl: NSSegmentedControl!
+    private var segmentButtons: [NSButton] = []
+    private var selectedSegment = 0
     private var summaryLabel: NSTextField!
+    private var selectionIndicator: NSView!
 
     override init() {
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 420),
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -33,14 +35,49 @@ class StatsChartWindowController: NSObject {
         cv.layer?.backgroundColor = Drac.background.cgColor
 
         // Title
-        let title = makeLabel("Break History", size: 20, weight: .bold, color: Drac.purple)
+        let title = makeLabel("Break History", size: 24, weight: .bold, color: Drac.purple)
         cv.addSubview(title)
 
-        // Segmented control
-        segmentedControl = NSSegmentedControl(labels: ["7 Days", "30 Days"], trackingMode: .selectOne, target: self, action: #selector(segmentChanged))
-        segmentedControl.selectedSegment = 0
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        cv.addSubview(segmentedControl)
+        // Custom segmented control
+        let segContainer = NSView()
+        segContainer.wantsLayer = true
+        segContainer.layer?.backgroundColor = Drac.currentLine.cgColor
+        segContainer.layer?.cornerRadius = 8
+        segContainer.translatesAutoresizingMaskIntoConstraints = false
+        cv.addSubview(segContainer)
+
+        // Selection indicator (slides behind the active tab)
+        selectionIndicator = NSView()
+        selectionIndicator.wantsLayer = true
+        selectionIndicator.layer?.backgroundColor = Drac.purple.cgColor
+        selectionIndicator.layer?.cornerRadius = 6
+        selectionIndicator.translatesAutoresizingMaskIntoConstraints = false
+        segContainer.addSubview(selectionIndicator)
+
+        let labels = ["7 Days", "30 Days"]
+        let segStack = NSStackView()
+        segStack.orientation = .horizontal
+        segStack.spacing = 0
+        segStack.distribution = .fillEqually
+        segStack.translatesAutoresizingMaskIntoConstraints = false
+        segContainer.addSubview(segStack)
+
+        for (i, label) in labels.enumerated() {
+            let btn = NSButton()
+            btn.isBordered = false
+            btn.wantsLayer = true
+            btn.tag = i
+            btn.target = self
+            btn.action = #selector(segmentTapped(_:))
+            let color: NSColor = i == 0 ? Drac.foreground : Drac.comment
+            btn.attributedTitle = NSAttributedString(string: label, attributes: [
+                .foregroundColor: color,
+                .font: dmSans(size: 13, weight: .semibold),
+            ])
+            btn.translatesAutoresizingMaskIntoConstraints = false
+            segStack.addArrangedSubview(btn)
+            segmentButtons.append(btn)
+        }
 
         // Chart view
         chartView = StatsChartView()
@@ -48,13 +85,13 @@ class StatsChartWindowController: NSObject {
         cv.addSubview(chartView)
 
         // Summary label
-        summaryLabel = makeLabel("", size: 13, weight: .regular, color: Drac.comment)
+        summaryLabel = makeLabel("", size: 14, weight: .regular, color: Drac.comment)
         cv.addSubview(summaryLabel)
 
         // Legend
         let legendStack = NSStackView()
         legendStack.orientation = .horizontal
-        legendStack.spacing = 16
+        legendStack.spacing = 20
         legendStack.translatesAutoresizingMaskIntoConstraints = false
 
         let completedLegend = makeLegendItem(color: Drac.green, label: "Completed")
@@ -64,29 +101,62 @@ class StatsChartWindowController: NSObject {
         cv.addSubview(legendStack)
 
         NSLayoutConstraint.activate([
-            title.topAnchor.constraint(equalTo: cv.topAnchor, constant: 20),
+            title.topAnchor.constraint(equalTo: cv.topAnchor, constant: 28),
             title.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
 
-            segmentedControl.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 12),
-            segmentedControl.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+            segContainer.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 16),
+            segContainer.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+            segContainer.widthAnchor.constraint(equalToConstant: 200),
+            segContainer.heightAnchor.constraint(equalToConstant: 36),
 
-            chartView.topAnchor.constraint(equalTo: segmentedControl.bottomAnchor, constant: 16),
-            chartView.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 40),
-            chartView.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -24),
-            chartView.bottomAnchor.constraint(equalTo: legendStack.topAnchor, constant: -12),
+            segStack.topAnchor.constraint(equalTo: segContainer.topAnchor, constant: 3),
+            segStack.bottomAnchor.constraint(equalTo: segContainer.bottomAnchor, constant: -3),
+            segStack.leadingAnchor.constraint(equalTo: segContainer.leadingAnchor, constant: 3),
+            segStack.trailingAnchor.constraint(equalTo: segContainer.trailingAnchor, constant: -3),
+
+            selectionIndicator.topAnchor.constraint(equalTo: segContainer.topAnchor, constant: 3),
+            selectionIndicator.bottomAnchor.constraint(equalTo: segContainer.bottomAnchor, constant: -3),
+            selectionIndicator.widthAnchor.constraint(equalTo: segContainer.widthAnchor, multiplier: 0.5, constant: -3),
+
+            chartView.topAnchor.constraint(equalTo: segContainer.bottomAnchor, constant: 24),
+            chartView.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 50),
+            chartView.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -32),
+            chartView.bottomAnchor.constraint(equalTo: legendStack.topAnchor, constant: -16),
 
             legendStack.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
-            legendStack.bottomAnchor.constraint(equalTo: summaryLabel.topAnchor, constant: -8),
+            legendStack.bottomAnchor.constraint(equalTo: summaryLabel.topAnchor, constant: -10),
 
             summaryLabel.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
-            summaryLabel.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -16),
+            summaryLabel.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -20),
         ])
+
+        // Position the indicator on the first segment
+        updateIndicatorPosition(animated: false)
+    }
+
+    private func updateIndicatorPosition(animated: Bool) {
+        let leading = selectionIndicator.superview!.leadingAnchor
+        // Remove old leading constraint
+        for c in selectionIndicator.superview!.constraints where c.firstItem === selectionIndicator && c.firstAttribute == .leading {
+            c.isActive = false
+        }
+        let offset: CGFloat = selectedSegment == 0 ? 3 : 100
+        let constraint = selectionIndicator.leadingAnchor.constraint(equalTo: leading, constant: offset)
+        constraint.isActive = true
+
+        if animated {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                ctx.allowsImplicitAnimation = true
+                selectionIndicator.superview?.layoutSubtreeIfNeeded()
+            }
+        }
     }
 
     private func makeLegendItem(color: NSColor, label: String) -> NSStackView {
         let stack = NSStackView()
         stack.orientation = .horizontal
-        stack.spacing = 4
+        stack.spacing = 6
 
         let swatch = NSView()
         swatch.wantsLayer = true
@@ -94,22 +164,32 @@ class StatsChartWindowController: NSObject {
         swatch.layer?.cornerRadius = 3
         swatch.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            swatch.widthAnchor.constraint(equalToConstant: 12),
-            swatch.heightAnchor.constraint(equalToConstant: 12),
+            swatch.widthAnchor.constraint(equalToConstant: 14),
+            swatch.heightAnchor.constraint(equalToConstant: 14),
         ])
 
-        let lbl = makeLabel(label, size: 11, weight: .medium, color: Drac.comment)
+        let lbl = makeLabel(label, size: 12, weight: .medium, color: Drac.comment)
         stack.addArrangedSubview(swatch)
         stack.addArrangedSubview(lbl)
         return stack
     }
 
-    @objc private func segmentChanged() {
+    @objc private func segmentTapped(_ sender: NSButton) {
+        selectedSegment = sender.tag
+        // Update button text colors
+        for (i, btn) in segmentButtons.enumerated() {
+            let color: NSColor = i == selectedSegment ? Drac.foreground : Drac.comment
+            btn.attributedTitle = NSAttributedString(string: btn.attributedTitle.string, attributes: [
+                .foregroundColor: color,
+                .font: dmSans(size: 13, weight: .semibold),
+            ])
+        }
+        updateIndicatorPosition(animated: true)
         updateChart()
     }
 
     private func updateChart() {
-        let dayCount = segmentedControl.selectedSegment == 0 ? 7 : 30
+        let dayCount = selectedSegment == 0 ? 7 : 30
         let days = Statistics.shared.recentDays(count: dayCount)
         chartView.days = days
 
@@ -133,12 +213,12 @@ class StatsChartView: NSView {
         super.draw(dirtyRect)
         guard !days.isEmpty else { return }
 
-        let barSpacing: CGFloat = 2
-        let labelHeight: CGFloat = 20
+        let barSpacing: CGFloat = 3
+        let labelHeight: CGFloat = 24
         let chartArea = NSRect(
-            x: bounds.minX + 30,
+            x: bounds.minX + 36,
             y: bounds.minY + labelHeight,
-            width: bounds.width - 30,
+            width: bounds.width - 36,
             height: bounds.height - labelHeight
         )
 
@@ -152,10 +232,10 @@ class StatsChartView: NSView {
             let labelStr = "\(val)"
             let attrs: [NSAttributedString.Key: Any] = [
                 .foregroundColor: Drac.comment,
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 9, weight: .regular),
+                .font: dmMono(size: 10),
             ]
             let size = (labelStr as NSString).size(withAttributes: attrs)
-            (labelStr as NSString).draw(at: NSPoint(x: chartArea.minX - size.width - 4, y: y - size.height / 2), withAttributes: attrs)
+            (labelStr as NSString).draw(at: NSPoint(x: chartArea.minX - size.width - 6, y: y - size.height / 2), withAttributes: attrs)
 
             // Grid line
             let gridPath = NSBezierPath()
@@ -179,7 +259,7 @@ class StatsChartView: NSView {
             // Completed bar (green, bottom)
             if day.completed > 0 {
                 let completedRect = NSRect(x: x, y: chartArea.minY, width: barWidth, height: completedHeight)
-                let completedPath = NSBezierPath(roundedRect: completedRect, xRadius: 2, yRadius: 2)
+                let completedPath = NSBezierPath(roundedRect: completedRect, xRadius: 3, yRadius: 3)
                 Drac.green.setFill()
                 completedPath.fill()
             }
@@ -187,7 +267,7 @@ class StatsChartView: NSView {
             // Skipped bar (orange, stacked on top)
             if day.skipped > 0 {
                 let skippedRect = NSRect(x: x, y: chartArea.minY + completedHeight, width: barWidth, height: totalHeight - completedHeight)
-                let skippedPath = NSBezierPath(roundedRect: skippedRect, xRadius: 2, yRadius: 2)
+                let skippedPath = NSBezierPath(roundedRect: skippedRect, xRadius: 3, yRadius: 3)
                 Drac.orange.setFill()
                 skippedPath.fill()
             }
@@ -197,7 +277,7 @@ class StatsChartView: NSView {
                 let label = dateFormatter.string(from: date)
                 let attrs: [NSAttributedString.Key: Any] = [
                     .foregroundColor: Drac.comment,
-                    .font: NSFont.systemFont(ofSize: 9),
+                    .font: dmSans(size: 10),
                 ]
                 let size = (label as NSString).size(withAttributes: attrs)
                 let labelX = x + (barWidth - size.width) / 2

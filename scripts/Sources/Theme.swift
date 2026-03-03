@@ -1,4 +1,44 @@
 import Cocoa
+import CoreText
+
+// ─── Custom Fonts (DM Sans + DM Mono from draculatheme.com) ────────
+
+/// Register bundled TTF fonts so they're available by name without system install.
+func registerCustomFonts() {
+    let fontFiles = [
+        "fonts/DMSans-Regular.ttf",
+        "fonts/DMSans-Medium.ttf",
+        "fonts/DMSans-Bold.ttf",
+        "fonts/DMMono-Regular.ttf",
+        "fonts/DMMono-Medium.ttf",
+    ]
+    for file in fontFiles {
+        let path = assetPath(file)
+        let url = URL(fileURLWithPath: path) as CFURL
+        CTFontManagerRegisterFontsForURL(url, .process, nil)
+    }
+}
+
+/// DM Sans font matching the Dracula website typography.
+func dmSans(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+    let name: String
+    switch weight {
+    case .bold, .heavy, .black:
+        name = "DMSans-Bold"
+    case .medium, .semibold:
+        name = "DMSans-Medium"
+    default:
+        name = "DMSans-Regular"
+    }
+    return NSFont(name: name, size: size) ?? NSFont.systemFont(ofSize: size, weight: weight)
+}
+
+/// DM Mono font for monospace/code contexts.
+func dmMono(size: CGFloat, weight: NSFont.Weight = .regular) -> NSFont {
+    let name = (weight == .medium || weight == .semibold || weight == .bold)
+        ? "DMMono-Medium" : "DMMono-Regular"
+    return NSFont(name: name, size: size) ?? NSFont.monospacedSystemFont(ofSize: size, weight: weight)
+}
 
 // ─── Dracula Palette ────────────────────────────────────────────────
 struct Drac {
@@ -17,6 +57,14 @@ struct Drac {
 
 // ─── Asset Resolution ────────────────────────────────────────────────
 func assetPath(_ name: String) -> String {
+    // Check install directory (binary launched via .app resolves through symlinks,
+    // so argv[0] won't match ~/.eye-break/; check the known install path directly)
+    let installDir = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent(".eye-break/assets/\(name)").path
+    if FileManager.default.fileExists(atPath: installDir) {
+        return installDir
+    }
+
     let binaryURL = URL(fileURLWithPath: CommandLine.arguments[0])
     let binaryDir = binaryURL.deletingLastPathComponent()
 
@@ -53,7 +101,7 @@ func makeLabel(
     color: NSColor = Drac.foreground
 ) -> NSTextField {
     let label = NSTextField(labelWithString: text)
-    label.font = NSFont.systemFont(ofSize: size, weight: weight)
+    label.font = dmSans(size: size, weight: weight)
     label.textColor = color
     label.alignment = .center
     label.lineBreakMode = .byWordWrapping
@@ -114,7 +162,7 @@ class HoverButton: NSButton {
     func setLabel(_ text: String) {
         attributedTitle = NSAttributedString(string: text, attributes: [
             .foregroundColor: fg,
-            .font: NSFont.systemFont(ofSize: 15, weight: .semibold)
+            .font: dmSans(size: 15, weight: .semibold)
         ])
     }
 
@@ -126,8 +174,20 @@ class HoverButton: NSButton {
     }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
-    override func mouseEntered(with e: NSEvent) { layer?.backgroundColor = hoverBg.cgColor }
-    override func mouseExited(with e: NSEvent)  { layer?.backgroundColor = normalBg.cgColor }
+    override func mouseEntered(with e: NSEvent) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            ctx.allowsImplicitAnimation = true
+            self.layer?.backgroundColor = hoverBg.cgColor
+        }
+    }
+    override func mouseExited(with e: NSEvent) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            ctx.allowsImplicitAnimation = true
+            self.layer?.backgroundColor = normalBg.cgColor
+        }
+    }
     required init?(coder: NSCoder) { fatalError() }
 }
 
@@ -148,14 +208,11 @@ class HoverLink: NSButton {
         applyStyle(normalColor)
     }
 
-    private func applyStyle(_ color: NSColor, underline: Bool = false) {
-        var attrs: [NSAttributedString.Key: Any] = [
+    private func applyStyle(_ color: NSColor) {
+        let attrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: color,
-            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
+            .font: dmSans(size: fontSize, weight: .medium),
         ]
-        if underline {
-            attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
-        }
         attributedTitle = NSAttributedString(string: text, attributes: attrs)
     }
 
@@ -167,8 +224,20 @@ class HoverLink: NSButton {
         addTrackingArea(NSTrackingArea(rect: bounds,
             options: [.mouseEnteredAndExited, .activeAlways], owner: self))
     }
-    override func mouseEntered(with e: NSEvent) { applyStyle(hoverColor, underline: true) }
-    override func mouseExited(with e: NSEvent)  { applyStyle(normalColor) }
+    override func mouseEntered(with e: NSEvent) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            ctx.allowsImplicitAnimation = true
+            self.applyStyle(self.hoverColor)
+        }
+    }
+    override func mouseExited(with e: NSEvent) {
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.15
+            ctx.allowsImplicitAnimation = true
+            self.applyStyle(self.normalColor)
+        }
+    }
     required init?(coder: NSCoder) { fatalError() }
 }
 

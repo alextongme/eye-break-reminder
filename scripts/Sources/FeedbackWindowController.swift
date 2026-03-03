@@ -30,7 +30,7 @@ class FeedbackWindowController: NSObject {
         self.mode = mode
 
         let W: CGFloat = 500
-        let H: CGFloat = mode == .bug ? 560 : 400
+        let H: CGFloat = mode == .bug ? 600 : 440
         let win = FeedbackWindow(
             contentRect: NSRect(x: 0, y: 0, width: W, height: H),
             styleMask: .borderless,
@@ -129,7 +129,8 @@ class FeedbackWindowController: NSObject {
             y -= 28
         }
 
-        // Screenshot section
+        // Screenshot section (with vertical spacing)
+        y -= 8
         let screenshotBtn = HoverButton("Attach Screenshot", bg: Drac.currentLine, hover: Drac.comment,
                                          target: self, action: #selector(attachScreenshot))
         screenshotBtn.translatesAutoresizingMaskIntoConstraints = true
@@ -140,26 +141,38 @@ class FeedbackWindowController: NSObject {
         screenshotLabel.frame = NSRect(x: pad + 190, y: y + 6, width: contentW - 190, height: 20)
         screenshotLabel.alignment = .left
         cv.addSubview(screenshotLabel)
-        y -= 26
+        y -= 28
 
         screenshotWarning = frameLabel("", size: 11, color: Drac.red)
         screenshotWarning.frame = NSRect(x: pad, y: y, width: contentW, height: 18)
         screenshotWarning.alignment = .left
         cv.addSubview(screenshotWarning)
-        y -= 28
+        y -= 32
 
-        // System info (auto-populated, read-only)
+        // System info (auto-populated, read-only) — each field on its own line
         let sysInfoLabel = frameLabel("System info (auto-included):", size: 13, weight: .medium)
         sysInfoLabel.frame = NSRect(x: pad, y: y, width: contentW, height: 18)
         cv.addSubview(sysInfoLabel)
-        y -= 44
+        y -= 22
 
-        let sysInfo = frameLabel(systemInfoString(), size: 11, color: Drac.comment)
-        sysInfo.frame = NSRect(x: pad, y: y, width: contentW, height: 36)
-        sysInfo.alignment = .left
-        sysInfo.maximumNumberOfLines = 3
-        cv.addSubview(sysInfo)
-        y -= 20
+        let (appLine, osLine, macLine) = systemInfoLines()
+        let infoSize: CGFloat = 12.5
+        let lineH: CGFloat = 18
+
+        let appInfo = frameLabel(appLine, size: infoSize, color: Drac.comment)
+        appInfo.frame = NSRect(x: pad, y: y, width: contentW, height: lineH)
+        cv.addSubview(appInfo)
+        y -= lineH + 2
+
+        let osInfo = frameLabel(osLine, size: infoSize, color: Drac.comment)
+        osInfo.frame = NSRect(x: pad, y: y, width: contentW, height: lineH)
+        cv.addSubview(osInfo)
+        y -= lineH + 2
+
+        let macInfo = frameLabel(macLine, size: infoSize, color: Drac.comment)
+        macInfo.frame = NSRect(x: pad, y: y, width: contentW, height: lineH)
+        cv.addSubview(macInfo)
+        y -= 16
 
         // Send button
         let sendBtn = HoverButton("Send Report", bg: Drac.purple, hover: Drac.pink,
@@ -181,7 +194,7 @@ class FeedbackWindowController: NSObject {
         textView.isEditable = true
         textView.isSelectable = true
         textView.isRichText = false
-        textView.font = NSFont.systemFont(ofSize: 13)
+        textView.font = dmSans(size: 13)
         textView.textColor = Drac.foreground
         textView.backgroundColor = Drac.currentLine
         textView.insertionPointColor = Drac.foreground
@@ -200,11 +213,16 @@ class FeedbackWindowController: NSObject {
 
     // MARK: - System Info
 
-    private func systemInfoString() -> String {
+    private func systemInfoLines() -> (String, String, String) {
         let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
         let model = macModel()
         let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
-        return "App: v\(appVersion)  |  macOS: \(osVersion)\nMac: \(model)"
+        return ("App: v\(appVersion)", "macOS: \(osVersion)", "Mac: \(model)")
+    }
+
+    private func systemInfoString() -> String {
+        let (app, os, mac) = systemInfoLines()
+        return "\(app)\n\(os)\n\(mac)"
     }
 
     private func macModel() -> String {

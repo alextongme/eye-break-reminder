@@ -13,7 +13,7 @@ class Preferences {
         case launchAtLogin, fullscreenOverlay, cloudsEnabled
         case longBreakEnabled, longBreakEveryN, longBreakDuration
         case hasCompletedOnboarding
-        case strictMode, appExclusionEnabled, excludedBundleIDs, preBreakNotifyEnabled
+        case strictMode, appExclusionEnabled, excludedBundleIDs
     }
 
     init() { registerDefaults() }
@@ -40,7 +40,6 @@ class Preferences {
             Key.strictMode.rawValue: false,
             Key.appExclusionEnabled.rawValue: true,
             Key.excludedBundleIDs.rawValue: ["us.zoom.xos", "com.apple.iWork.Keynote", "com.microsoft.Powerpoint", "com.microsoft.teams2", "com.microsoft.teams", "com.cisco.webexmeetingsapp", "com.apple.FaceTime", "com.obsproject.obs-studio", "com.apple.QuickTimePlayerX", "com.apple.screencaptureui", "com.loom.desktop", "com.getcleanshot.app", "com.crowdcafe.screenflow10"],
-            Key.preBreakNotifyEnabled.rawValue: true,
         ])
     }
 
@@ -148,8 +147,4 @@ class Preferences {
         set { defaults.set(newValue, forKey: Key.excludedBundleIDs.rawValue); notify() }
     }
 
-    var preBreakNotifyEnabled: Bool {
-        get { defaults.bool(forKey: Key.preBreakNotifyEnabled.rawValue) }
-        set { defaults.set(newValue, forKey: Key.preBreakNotifyEnabled.rawValue); notify() }
-    }
 }

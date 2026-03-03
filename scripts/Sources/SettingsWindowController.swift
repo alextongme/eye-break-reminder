@@ -35,7 +35,6 @@ class SettingsWindowController: NSObject {
     var longBreakDurationLabel: NSTextField!
     var strictToggle: NSSwitch!
     var appExclusionToggle: NSSwitch!
-    var preBreakNotifyToggle: NSSwitch!
 
     private let W: CGFloat = 740
     private let H: CGFloat = 740
@@ -201,10 +200,6 @@ class SettingsWindowController: NSObject {
             target: self, action: #selector(appExclusionToggleChanged))
         y -= rowStep
 
-        preBreakNotifyToggle = addToggleRow(
-            "Notify before break", x: rightX, y: y, to: cv,
-            target: self, action: #selector(preBreakNotifyToggleChanged))
-
         // ── Restore Defaults button (bottom center) ──
         let restoreBtn = HoverLink(
             "Restore Defaults",
@@ -299,7 +294,7 @@ class SettingsWindowController: NSObject {
     private func field(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = Drac.foreground) -> NSTextField {
         let f = NSTextField(frame: .zero)
         f.stringValue = text
-        f.font = NSFont.systemFont(ofSize: size, weight: weight)
+        f.font = dmSans(size: size, weight: weight)
         f.textColor = color
         f.backgroundColor = .clear
         f.isBezeled = false
@@ -337,7 +332,6 @@ class SettingsWindowController: NSObject {
         longBreakToggle.state = prefs.longBreakEnabled ? .on : .off
         strictToggle.state = prefs.strictMode ? .on : .off
         appExclusionToggle.state = prefs.appExclusionEnabled ? .on : .off
-        preBreakNotifyToggle.state = prefs.preBreakNotifyEnabled ? .on : .off
         longBreakEverySlider.intValue = Int32(prefs.longBreakEveryN)
         longBreakEveryLabel.stringValue = "\(prefs.longBreakEveryN) eye breaks"
 
@@ -430,9 +424,6 @@ class SettingsWindowController: NSObject {
         Preferences.shared.appExclusionEnabled = appExclusionToggle.state == .on
     }
 
-    @objc func preBreakNotifyToggleChanged() {
-        Preferences.shared.preBreakNotifyEnabled = preBreakNotifyToggle.state == .on
-    }
 
     @objc func restoreDefaults() {
         let domain = Bundle.main.bundleIdentifier ?? "com.counttongula.eyebreak"
