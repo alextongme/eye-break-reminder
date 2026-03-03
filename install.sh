@@ -20,7 +20,6 @@ fail() { echo "  ❌ $1" >&2; exit 1; }
 
 # ── Preflight ──
 [[ "$(uname)" == "Darwin" ]] || fail "This only works on macOS."
-command -v python3 >/dev/null || fail "python3 not found."
 command -v swiftc  >/dev/null || fail "swiftc not found (install Xcode Command Line Tools)."
 
 echo ""
@@ -30,25 +29,20 @@ echo ""
 
 # ── Compile Swift UI ──
 info "Compiling Dracula UI ..."
-swiftc -O -o "$REPO_DIR/scripts/eye_break_ui" "$REPO_DIR/scripts/eye_break_ui.swift" \
-    -framework Cocoa 2>&1
+swiftc -O -o "$REPO_DIR/scripts/eye_break_ui" \
+    "$REPO_DIR/scripts/Sources/"*.swift \
+    -framework Cocoa -framework IOKit 2>&1
 ok "Binary compiled"
 
-# ── Install scripts ──
+# ── Install binary + assets ──
 info "Installing to $INSTALL_DIR ..."
 mkdir -p "$INSTALL_DIR"
-# Copy shell scripts (copies avoid macOS TCC/provenance issues with symlinks)
-for script in "$REPO_DIR/scripts/"*.sh; do
-    target="$INSTALL_DIR/$(basename "$script")"
-    rm -f "$target"
-    cp "$script" "$target"
-done
 # Symlink the compiled binary
 rm -f "$INSTALL_DIR/eye_break_ui"
 ln -s "$REPO_DIR/scripts/eye_break_ui" "$INSTALL_DIR/eye_break_ui"
 # Strip macOS quarantine/provenance attributes
 xattr -cr "$INSTALL_DIR" 2>/dev/null || true
-ok "Scripts installed → $INSTALL_DIR"
+ok "Binary installed → $INSTALL_DIR"
 
 # ── Symlink assets ──
 info "Symlinking assets ..."
@@ -62,11 +56,10 @@ rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_BUNDLE/Contents/MacOS"
 mkdir -p "$APP_BUNDLE/Contents/Resources"
 
-# Launcher script inside the .app
+# Launcher script inside the .app — runs the persistent Swift binary directly
 cat > "$APP_BUNDLE/Contents/MacOS/run" <<'LAUNCHER'
 #!/bin/bash
-SCRIPT_DIR="$HOME/.eye-break"
-exec "$SCRIPT_DIR/eye_break_daemon.sh"
+exec "$HOME/.eye-break/eye_break_ui"
 LAUNCHER
 chmod +x "$APP_BUNDLE/Contents/MacOS/run"
 
@@ -131,8 +124,9 @@ launchctl bootstrap "gui/$(id -u)" "$AGENT_PLIST"
 ok "Daemon loaded"
 
 echo ""
-echo "  🦇 Count Tongula will remind you to rest your eyes"
-echo "     every 20 minutes of screen time."
+echo "  🦇 Count Tongula will remind you to rest your eyes."
+echo "     Menu bar icon: 🦇 with countdown timer."
+echo "     Keyboard shortcuts: Cmd+Shift+B (break now), Cmd+Shift+P (pause)."
 echo ""
 echo "  To uninstall:  ./uninstall.sh"
 echo ""

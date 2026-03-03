@@ -1,0 +1,69 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build binary
+        run: |
+          swiftc -O -o scripts/eye_break_ui \
+            scripts/Sources/*.swift \
+            -framework Cocoa -framework IOKit
+
+      - name: Build .app bundle
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          APP_NAME="Count Tongula's Eye Break"
+          APP_BUNDLE="build/$APP_NAME.app"
+          mkdir -p "$APP_BUNDLE/Contents/MacOS"
+          mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+          cp scripts/eye_break_ui "$APP_BUNDLE/Contents/MacOS/eye_break_ui"
+          cp -r assets "$APP_BUNDLE/Contents/Resources/assets"
+          cp assets/AppIcon.icns "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+
+          cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleName</key>
+              <string>$APP_NAME</string>
+              <key>CFBundleDisplayName</key>
+              <string>$APP_NAME</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.counttongula.eyebreak</string>
+              <key>CFBundleExecutable</key>
+              <string>eye_break_ui</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
+              <key>CFBundleVersion</key>
+              <string>$VERSION</string>
+              <key>CFBundleShortVersionString</key>
+              <string>$VERSION</string>
+              <key>LSUIElement</key>
+              <true/>
+          </dict>
+          </plist>
+          PLIST
+
+      - name: Create ZIP
+        run: |
+          cd build
+          zip -r "CountTongulasEyeBreak-${GITHUB_REF_NAME}.zip" "Count Tongula's Eye Break.app"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/CountTongulasEyeBreak-*.zip
+          generate_release_notes: true

@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          swiftc -O -o scripts/eye_break_ui \
+            scripts/Sources/*.swift \
+            -framework Cocoa -framework IOKit
+
+      - name: Run tests
+        run: scripts/run_tests.sh
