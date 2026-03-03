@@ -185,20 +185,7 @@ class OnboardingController: NSObject {
         startButton.translatesAutoresizingMaskIntoConstraints = true
         cv.addSubview(startButton)
 
-        // ── "I'll configure later" link ──
-        let skipButton = HoverLink(
-            "I'll configure later",
-            color: Drac.comment,
-            hover: Drac.foreground,
-            size: 12,
-            target: self,
-            action: #selector(skipTapped)
-        )
-        skipButton.translatesAutoresizingMaskIntoConstraints = true
-        skipButton.sizeToFit()
-        let skipW = skipButton.frame.width
-        skipButton.frame = NSRect(x: (W - skipW) / 2, y: btnY - 12 - 20, width: skipW, height: 20)
-        cv.addSubview(skipButton)
+        // (no skip link — the sliders are the configuration)
     }
 
     // Simple text field factory (frame-based, no Auto Layout)
