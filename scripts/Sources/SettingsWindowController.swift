@@ -1,6 +1,12 @@
 import Cocoa
 
-class SettingsWindowController: NSObject, NSWindowDelegate {
+// Borderless window that can become key
+private class SettingsWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+class SettingsWindowController: NSObject {
     let window: NSWindow
 
     var intervalSlider: NSSlider!
@@ -22,149 +28,243 @@ class SettingsWindowController: NSObject, NSWindowDelegate {
     var longBreakDurationSlider: NSSlider!
     var longBreakDurationLabel: NSTextField!
 
+    private let W: CGFloat = 740
+    private let H: CGFloat = 540
+    private let colW: CGFloat = 300
+    private let leftX: CGFloat = 44
+    private let rightX: CGFloat = 396  // 44 + 300 + 52 gap
+    private let rowStep: CGFloat = 44  // Uniform spacing for all row types
+
     override init() {
-        window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 500, height: 580),
-            styleMask: [.titled, .closable],
+        let win = SettingsWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 740, height: 540),
+            styleMask: .borderless,
             backing: .buffered,
             defer: false
         )
+        win.appearance = NSAppearance(named: .darkAqua)
+        win.backgroundColor = .clear
+        win.isOpaque = false
+        win.isMovableByWindowBackground = false
+        win.hasShadow = true
+        win.level = .floating
+        self.window = win
+
         super.init()
-        window.backgroundColor = Drac.background
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isReleasedWhenClosed = false
-        window.delegate = self
         buildUI()
         loadPreferences()
+
+        // Center on active screen
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) })
+            ?? NSScreen.main
+        if let screen = targetScreen {
+            let sf = screen.visibleFrame
+            let wf = win.frame
+            let x = sf.minX + (sf.width - wf.width) / 2
+            let y = sf.minY + (sf.height - wf.height) / 2
+            win.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            win.center()
+        }
     }
+
+    // MARK: - Frame-based two-column layout
 
     func buildUI() {
-        guard let contentView = window.contentView else { return }
-        contentView.wantsLayer = true
-        contentView.layer?.backgroundColor = Drac.background.cgColor
+        guard let cv = window.contentView else { return }
+        cv.wantsLayer = true
+        cv.layer?.backgroundColor = Drac.background.cgColor
+        cv.layer?.cornerRadius = 16
+        cv.layer?.masksToBounds = true
 
-        var yOffset: CGFloat = 580 - 24
+        // ── Title ──
+        let title = field("Settings", size: 22, weight: .bold, color: Drac.purple)
+        title.alignment = .center
+        title.frame = NSRect(x: 0, y: H - 56, width: W, height: 30)
+        cv.addSubview(title)
 
-        func addSectionHeading(_ text: String) {
-            let label = makeLabel(text, size: 16, weight: .bold, color: Drac.purple)
-            label.translatesAutoresizingMaskIntoConstraints = false
-            contentView.addSubview(label)
-            NSLayoutConstraint.activate([
-                label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-                label.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 580 - yOffset)
-            ])
-            yOffset -= 28
-        }
+        // ── Close button (top-right) ──
+        let closeBtn = HoverLink(
+            "Done",
+            color: Drac.green,
+            hover: Drac.foreground,
+            size: 13,
+            target: self,
+            action: #selector(closeTapped)
+        )
+        closeBtn.translatesAutoresizingMaskIntoConstraints = true
+        closeBtn.sizeToFit()
+        closeBtn.frame = NSRect(x: W - closeBtn.frame.width - 36, y: H - 52, width: closeBtn.frame.width, height: 20)
+        cv.addSubview(closeBtn)
 
-        func addRow(labelText: String, control: NSView, valueLabel: NSTextField? = nil) {
-            let label = makeLabel(labelText, size: 13, weight: .regular, color: Drac.foreground)
-            label.translatesAutoresizingMaskIntoConstraints = false
-            contentView.addSubview(label)
+        // ── Left Column: Timing + Long Breaks ──
+        var y = H - 100
 
-            control.translatesAutoresizingMaskIntoConstraints = false
-            contentView.addSubview(control)
+        y = addHeading("Timing", x: leftX, y: y, to: cv)
 
-            let topOffset = 580 - yOffset
+        (intervalSlider, intervalValueLabel) = addSliderRow(
+            "Break interval", min: 5, max: 60, x: leftX, y: y, to: cv,
+            target: self, action: #selector(intervalChanged))
+        y -= rowStep
 
-            NSLayoutConstraint.activate([
-                label.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-                label.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: topOffset + 18)
-            ])
+        (durationSlider, durationValueLabel) = addSliderRow(
+            "Break duration", min: 5, max: 60, x: leftX, y: y, to: cv,
+            target: self, action: #selector(durationChanged))
+        y -= rowStep
 
-            if let vl = valueLabel {
-                vl.translatesAutoresizingMaskIntoConstraints = false
-                contentView.addSubview(vl)
-                NSLayoutConstraint.activate([
-                    vl.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-                    vl.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: topOffset + 18),
-                    control.trailingAnchor.constraint(equalTo: vl.leadingAnchor, constant: -8),
-                    control.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: topOffset + 18),
-                    control.widthAnchor.constraint(equalToConstant: 160)
-                ])
-            } else {
-                NSLayoutConstraint.activate([
-                    control.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-                    control.centerYAnchor.constraint(equalTo: contentView.topAnchor, constant: topOffset + 18)
-                ])
-            }
+        (snoozeSlider, snoozeValueLabel) = addSliderRow(
+            "Snooze duration", min: 1, max: 10, x: leftX, y: y, to: cv,
+            target: self, action: #selector(snoozeChanged))
+        y -= rowStep + 20  // Extra gap before next section
 
-            yOffset -= 44
-        }
+        y = addHeading("Long Breaks", x: leftX, y: y, to: cv)
 
-        // Section 1: Timing
-        addSectionHeading("Timing")
+        longBreakToggle = addToggleRow(
+            "Enable long breaks", x: leftX, y: y, to: cv,
+            target: self, action: #selector(longBreakToggleChanged))
+        y -= rowStep
 
-        intervalSlider = makeSlider(min: 5, max: 60, target: self, action: #selector(intervalChanged))
-        intervalValueLabel = makeLabel("20 min", size: 13, weight: .regular, color: Drac.comment)
-        intervalValueLabel.alignment = .right
-        addRow(labelText: "Break interval", control: intervalSlider, valueLabel: intervalValueLabel)
+        (longBreakEverySlider, longBreakEveryLabel) = addSliderRow(
+            "Long break every", min: 2, max: 10, x: leftX, y: y, to: cv,
+            target: self, action: #selector(longBreakEveryChanged))
+        y -= rowStep
 
-        durationSlider = makeSlider(min: 10, max: 60, target: self, action: #selector(durationChanged))
-        durationValueLabel = makeLabel("20 sec", size: 13, weight: .regular, color: Drac.comment)
-        durationValueLabel.alignment = .right
-        addRow(labelText: "Break duration", control: durationSlider, valueLabel: durationValueLabel)
+        (longBreakDurationSlider, longBreakDurationLabel) = addSliderRow(
+            "Long break duration", min: 1, max: 10, x: leftX, y: y, to: cv,
+            target: self, action: #selector(longBreakDurationChanged))
 
-        snoozeSlider = makeSlider(min: 1, max: 10, target: self, action: #selector(snoozeChanged))
-        snoozeValueLabel = makeLabel("5 min", size: 13, weight: .regular, color: Drac.comment)
-        snoozeValueLabel.alignment = .right
-        addRow(labelText: "Snooze duration", control: snoozeSlider, valueLabel: snoozeValueLabel)
+        // ── Right Column: Sounds + Behavior ──
+        y = H - 100
 
-        yOffset -= 8
+        y = addHeading("Sounds", x: rightX, y: y, to: cv)
 
-        // Section 2: Sounds
-        addSectionHeading("Sounds")
+        soundToggle = addToggleRow(
+            "Enable sounds", x: rightX, y: y, to: cv,
+            target: self, action: #selector(soundToggleChanged))
+        y -= rowStep
 
-        soundToggle = makeSwitch(target: self, action: #selector(soundToggleChanged))
-        addRow(labelText: "Enable sounds", control: soundToggle)
+        promptSoundPicker = addPickerRow(
+            "Prompt sound", items: SoundManager.availableSounds, x: rightX, y: y, to: cv,
+            target: self, action: #selector(promptSoundChanged))
+        y -= rowStep
 
-        promptSoundPicker = NSPopUpButton()
-        promptSoundPicker.addItems(withTitles: SoundManager.availableSounds)
-        promptSoundPicker.target = self
-        promptSoundPicker.action = #selector(promptSoundChanged)
-        addRow(labelText: "Break prompt sound", control: promptSoundPicker)
+        completeSoundPicker = addPickerRow(
+            "Complete sound", items: SoundManager.availableSounds, x: rightX, y: y, to: cv,
+            target: self, action: #selector(completeSoundChanged))
+        y -= rowStep + 20  // Extra gap before next section
 
-        completeSoundPicker = NSPopUpButton()
-        completeSoundPicker.addItems(withTitles: SoundManager.availableSounds)
-        completeSoundPicker.target = self
-        completeSoundPicker.action = #selector(completeSoundChanged)
-        addRow(labelText: "Break complete sound", control: completeSoundPicker)
+        y = addHeading("Behavior", x: rightX, y: y, to: cv)
 
-        yOffset -= 8
+        dndToggle = addToggleRow(
+            "Pause during DND", x: rightX, y: y, to: cv,
+            target: self, action: #selector(dndToggleChanged))
+        y -= rowStep
 
-        // Section 3: Behavior
-        addSectionHeading("Behavior")
+        idleToggle = addToggleRow(
+            "Detect inactivity", x: rightX, y: y, to: cv,
+            target: self, action: #selector(idleToggleChanged))
+        y -= rowStep
 
-        dndToggle = makeSwitch(target: self, action: #selector(dndToggleChanged))
-        addRow(labelText: "Pause during Do Not Disturb", control: dndToggle)
+        fullscreenToggle = addToggleRow(
+            "Dim screens on break", x: rightX, y: y, to: cv,
+            target: self, action: #selector(fullscreenToggleChanged))
+        y -= rowStep
 
-        idleToggle = makeSwitch(target: self, action: #selector(idleToggleChanged))
-        addRow(labelText: "Detect inactivity", control: idleToggle)
-
-        fullscreenToggle = makeSwitch(target: self, action: #selector(fullscreenToggleChanged))
-        addRow(labelText: "Fullscreen overlay", control: fullscreenToggle)
-
-        launchToggle = makeSwitch(target: self, action: #selector(launchToggleChanged))
-        addRow(labelText: "Launch at login", control: launchToggle)
-
-        yOffset -= 8
-
-        // Section 4: Long Breaks
-        addSectionHeading("Long Breaks")
-
-        longBreakToggle = makeSwitch(target: self, action: #selector(longBreakToggleChanged))
-        addRow(labelText: "Enable long breaks", control: longBreakToggle)
-
-        longBreakEverySlider = makeSlider(min: 2, max: 10, target: self, action: #selector(longBreakEveryChanged))
-        longBreakEveryLabel = makeLabel("3 eye breaks", size: 13, weight: .regular, color: Drac.comment)
-        longBreakEveryLabel.alignment = .right
-        addRow(labelText: "Long break every", control: longBreakEverySlider, valueLabel: longBreakEveryLabel)
-
-        longBreakDurationSlider = makeSlider(min: 1, max: 10, target: self, action: #selector(longBreakDurationChanged))
-        longBreakDurationLabel = makeLabel("5 min", size: 13, weight: .regular, color: Drac.comment)
-        longBreakDurationLabel.alignment = .right
-        addRow(labelText: "Long break duration", control: longBreakDurationSlider, valueLabel: longBreakDurationLabel)
+        launchToggle = addToggleRow(
+            "Launch at login", x: rightX, y: y, to: cv,
+            target: self, action: #selector(launchToggleChanged))
     }
+
+    // MARK: - Row builders
+
+    @discardableResult
+    private func addHeading(_ text: String, x: CGFloat, y: CGFloat, to parent: NSView) -> CGFloat {
+        let lbl = field(text, size: 15, weight: .bold, color: Drac.cyan)
+        lbl.frame = NSRect(x: x, y: y, width: colW, height: 20)
+        parent.addSubview(lbl)
+        return y - 38
+    }
+
+    private func addSliderRow(
+        _ text: String, min: Double, max: Double,
+        x: CGFloat, y: CGFloat, to parent: NSView,
+        target: AnyObject?, action: Selector?
+    ) -> (NSSlider, NSTextField) {
+        let labelW: CGFloat = 120
+        let valueW: CGFloat = 80
+        let sliderW = colW - labelW - valueW - 12
+
+        let lbl = field(text, size: 13, color: Drac.foreground)
+        lbl.frame = NSRect(x: x, y: y, width: labelW, height: 20)
+        parent.addSubview(lbl)
+
+        let slider = NSSlider(frame: NSRect(x: x + labelW + 4, y: y, width: sliderW, height: 20))
+        slider.minValue = min
+        slider.maxValue = max
+        slider.isContinuous = true
+        slider.target = target
+        slider.action = action
+        parent.addSubview(slider)
+
+        let valLbl = field("", size: 13, color: Drac.comment)
+        valLbl.alignment = .right
+        valLbl.frame = NSRect(x: x + colW - valueW, y: y, width: valueW, height: 20)
+        parent.addSubview(valLbl)
+
+        return (slider, valLbl)
+    }
+
+    private func addToggleRow(
+        _ text: String, x: CGFloat, y: CGFloat, to parent: NSView,
+        target: AnyObject?, action: Selector?
+    ) -> NSSwitch {
+        let lbl = field(text, size: 13, color: Drac.foreground)
+        lbl.frame = NSRect(x: x, y: y, width: colW - 54, height: 20)
+        parent.addSubview(lbl)
+
+        let toggle = NSSwitch()
+        toggle.controlSize = .small
+        toggle.target = target
+        toggle.action = action
+        toggle.frame = NSRect(x: x + colW - 44, y: y, width: 44, height: 20)
+        parent.addSubview(toggle)
+
+        return toggle
+    }
+
+    private func addPickerRow(
+        _ text: String, items: [String], x: CGFloat, y: CGFloat, to parent: NSView,
+        target: AnyObject?, action: Selector?
+    ) -> NSPopUpButton {
+        let lbl = field(text, size: 13, color: Drac.foreground)
+        lbl.frame = NSRect(x: x, y: y, width: 120, height: 20)
+        parent.addSubview(lbl)
+
+        let picker = NSPopUpButton(frame: NSRect(x: x + 124, y: y - 2, width: colW - 124, height: 24))
+        picker.addItems(withTitles: items)
+        picker.target = target
+        picker.action = action
+        parent.addSubview(picker)
+
+        return picker
+    }
+
+    // MARK: - Field factory
+
+    private func field(_ text: String, size: CGFloat, weight: NSFont.Weight = .regular, color: NSColor = Drac.foreground) -> NSTextField {
+        let f = NSTextField(frame: .zero)
+        f.stringValue = text
+        f.font = NSFont.systemFont(ofSize: size, weight: weight)
+        f.textColor = color
+        f.backgroundColor = .clear
+        f.isBezeled = false
+        f.isEditable = false
+        f.isSelectable = false
+        return f
+    }
+
+    // MARK: - Load preferences
 
     func loadPreferences() {
         let prefs = Preferences.shared
@@ -181,7 +281,6 @@ class SettingsWindowController: NSObject, NSWindowDelegate {
         snoozeValueLabel.stringValue = "\(snoozeMin) min"
 
         soundToggle.state = prefs.soundEnabled ? .on : .off
-
         promptSoundPicker.selectItem(withTitle: prefs.promptSound)
         completeSoundPicker.selectItem(withTitle: prefs.completeSound)
 
@@ -197,6 +296,12 @@ class SettingsWindowController: NSObject, NSWindowDelegate {
         let longBreakMin = prefs.longBreakDuration / 60
         longBreakDurationSlider.intValue = Int32(longBreakMin)
         longBreakDurationLabel.stringValue = "\(longBreakMin) min"
+    }
+
+    // MARK: - Actions
+
+    @objc func closeTapped() {
+        window.orderOut(nil)
     }
 
     @objc func intervalChanged() {
@@ -264,25 +369,4 @@ class SettingsWindowController: NSObject, NSWindowDelegate {
         longBreakDurationLabel.stringValue = "\(val) min"
         Preferences.shared.longBreakDuration = val * 60
     }
-
-    func windowWillClose(_ notification: Notification) {
-        // Don't quit the app — just hide
-    }
-}
-
-// MARK: - Factories
-
-private func makeSwitch(target: AnyObject?, action: Selector?) -> NSSwitch {
-    let s = NSSwitch()
-    s.translatesAutoresizingMaskIntoConstraints = false
-    s.target = target
-    s.action = action
-    return s
-}
-
-private func makeSlider(min: Double, max: Double, target: AnyObject?, action: Selector?) -> NSSlider {
-    let s = NSSlider(value: min, minValue: min, maxValue: max, target: target, action: action)
-    s.translatesAutoresizingMaskIntoConstraints = false
-    s.isContinuous = true
-    return s
 }

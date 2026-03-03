@@ -141,12 +141,15 @@ class HoverLink: NSButton {
         applyStyle(normalColor)
     }
 
-    private func applyStyle(_ color: NSColor) {
-        attributedTitle = NSAttributedString(string: text, attributes: [
+    private func applyStyle(_ color: NSColor, underline: Bool = false) {
+        var attrs: [NSAttributedString.Key: Any] = [
             .foregroundColor: color,
-            .font: NSFont.systemFont(ofSize: fontSize),
-            .underlineStyle: NSUnderlineStyle.single.rawValue
-        ])
+            .font: NSFont.systemFont(ofSize: fontSize, weight: .medium),
+        ]
+        if underline {
+            attrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+        }
+        attributedTitle = NSAttributedString(string: text, attributes: attrs)
     }
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
@@ -156,7 +159,7 @@ class HoverLink: NSButton {
         addTrackingArea(NSTrackingArea(rect: bounds,
             options: [.mouseEnteredAndExited, .activeAlways], owner: self))
     }
-    override func mouseEntered(with e: NSEvent) { applyStyle(hoverColor) }
+    override func mouseEntered(with e: NSEvent) { applyStyle(hoverColor, underline: true) }
     override func mouseExited(with e: NSEvent)  { applyStyle(normalColor) }
     required init?(coder: NSCoder) { fatalError() }
 }

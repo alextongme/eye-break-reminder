@@ -24,13 +24,13 @@ class Preferences {
             Key.snoozeDuration.rawValue: 300,
             Key.autoQuitDelay.rawValue: 8,
             Key.soundEnabled.rawValue: true,
-            Key.promptSound.rawValue: "Basso",
-            Key.completeSound.rawValue: "Hero",
+            Key.promptSound.rawValue: "Sosumi",
+            Key.completeSound.rawValue: "Blow",
             Key.dndAware.rawValue: true,
             Key.idleDetectionEnabled.rawValue: true,
             Key.idleThreshold.rawValue: 300,
             Key.launchAtLogin.rawValue: true,
-            Key.fullscreenOverlay.rawValue: false,
+            Key.fullscreenOverlay.rawValue: true,
             Key.longBreakEnabled.rawValue: true,
             Key.longBreakEveryN.rawValue: 3,
             Key.longBreakDuration.rawValue: 300,
@@ -68,12 +68,12 @@ class Preferences {
     }
 
     var promptSound: String {
-        get { defaults.string(forKey: Key.promptSound.rawValue) ?? "Basso" }
+        get { defaults.string(forKey: Key.promptSound.rawValue) ?? "Sosumi" }
         set { defaults.set(newValue, forKey: Key.promptSound.rawValue); notify() }
     }
 
     var completeSound: String {
-        get { defaults.string(forKey: Key.completeSound.rawValue) ?? "Hero" }
+        get { defaults.string(forKey: Key.completeSound.rawValue) ?? "Blow" }
         set { defaults.set(newValue, forKey: Key.completeSound.rawValue); notify() }
     }
 

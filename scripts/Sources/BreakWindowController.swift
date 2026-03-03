@@ -62,15 +62,16 @@ class BreakWindowController: NSObject, NSWindowDelegate {
 
         // Main window
         let win = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 460, height: 440),
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 480),
             styleMask: [.titled, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
+        win.appearance = NSAppearance(named: .darkAqua)
         win.titlebarAppearsTransparent = true
         win.titleVisibility = .hidden
         win.backgroundColor = Drac.background
-        win.isMovableByWindowBackground = true
+        win.isMovableByWindowBackground = false
         win.hasShadow = true
         win.level = .floating
         win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -80,17 +81,16 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         let iv = NSImageView()
         iv.translatesAutoresizingMaskIntoConstraints = false
         iv.imageScaling = .scaleProportionallyDown
-        if let img = NSImage(contentsOfFile: assetPath("dracula.svg")) {
-            iv.image = img
-        } else if let img = NSImage(contentsOfFile: assetPath("dracula.png")) {
+        if let img = NSImage(contentsOfFile: assetPath("dracula.png"))
+                  ?? NSImage(contentsOfFile: assetPath("dracula.svg")) {
             iv.image = img
         }
         self.mascot = iv
 
         // Labels
         self.heading      = makeLabel("", size: 22, weight: .bold, color: Drac.purple)
-        self.body         = makeLabel("", size: 15, weight: .regular, color: Drac.foreground)
-        self.detail       = makeLabel("", size: 15, weight: .regular, color: Drac.foreground)
+        self.body         = makeLabel("", size: 17, weight: .regular, color: Drac.foreground)
+        self.detail       = makeLabel("", size: 15, weight: .medium, color: Drac.cyan)
         self.countdownLbl = makeLabel("", size: 80, weight: .heavy, color: Drac.green)
         self.countdownSub = makeLabel("", size: 14, weight: .regular, color: Drac.comment)
         self.progressBar  = ProgressBarView()
@@ -140,10 +140,6 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             win.setFrameOrigin(NSPoint(x: x, y: y))
         }
 
-        if Preferences.shared.fullscreenOverlay {
-            showOverlays()
-        }
-
         startMascotAnimation()
 
         win.makeKeyAndOrderFront(nil)
@@ -172,10 +168,13 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             cv.addSubview(v)
         }
 
-        // Multi-line labels
+        // Multi-line labels — set preferredMaxLayoutWidth so text wraps
+        // instead of expanding the window (460 - 64px padding = 396)
         for lbl in [heading, body, detail, countdownSub] {
             lbl.maximumNumberOfLines = 0
             lbl.lineBreakMode = .byWordWrapping
+            lbl.preferredMaxLayoutWidth = 396
+            lbl.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
 
         NSLayoutConstraint.activate([
@@ -186,17 +185,17 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             mascot.heightAnchor.constraint(equalToConstant: 110),
 
             // Heading
-            heading.topAnchor.constraint(equalTo: mascot.bottomAnchor, constant: 14),
+            heading.topAnchor.constraint(equalTo: mascot.bottomAnchor, constant: 36),
             heading.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 32),
             heading.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -32),
 
             // Body
-            body.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 6),
+            body.topAnchor.constraint(equalTo: heading.bottomAnchor, constant: 14),
             body.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 40),
             body.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -40),
 
             // Detail
-            detail.topAnchor.constraint(equalTo: body.bottomAnchor, constant: 4),
+            detail.topAnchor.constraint(equalTo: body.bottomAnchor, constant: 14),
             detail.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 40),
             detail.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -40),
 
@@ -215,18 +214,18 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             progressBar.heightAnchor.constraint(equalToConstant: 6),
 
             // Primary button
-            primaryBtn.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -28),
+            primaryBtn.bottomAnchor.constraint(equalTo: dismissBtn.topAnchor, constant: -14),
             primaryBtn.widthAnchor.constraint(equalToConstant: 160),
             primaryBtn.heightAnchor.constraint(equalToConstant: 42),
 
             // Secondary button
-            secondaryBtn.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -28),
+            secondaryBtn.bottomAnchor.constraint(equalTo: dismissBtn.topAnchor, constant: -14),
             secondaryBtn.leadingAnchor.constraint(equalTo: cv.centerXAnchor, constant: 8),
             secondaryBtn.widthAnchor.constraint(equalToConstant: 160),
             secondaryBtn.heightAnchor.constraint(equalToConstant: 42),
 
             // Dismiss link
-            dismissBtn.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -8),
+            dismissBtn.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -18),
             dismissBtn.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
         ])
 
@@ -244,10 +243,14 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             : "Time for an eye break!"
         heading.textColor = Drac.purple
 
-        body.stringValue = (breakType == .long)
-            ? "Stand up, stretch, and move around."
-            : "Look at something 20 feet away for 20 seconds."
-        detail.stringValue = ""
+        if breakType == .long {
+            let longMin = Preferences.shared.longBreakDuration / 60
+            body.stringValue = "Stand up, stretch, and move around."
+            detail.stringValue = "This is a \(longMin)-minute break. Ready?"
+        } else {
+            body.stringValue = "Look at something 20 feet away for 20 seconds."
+            detail.stringValue = ""
+        }
 
         body.isHidden = false
         detail.isHidden = false
@@ -272,6 +275,10 @@ class BreakWindowController: NSObject, NSWindowDelegate {
     }
 
     func showCountdown() {
+        if Preferences.shared.fullscreenOverlay && overlayWindows.isEmpty {
+            showOverlays()
+        }
+
         let quoteList = (breakType == .long) ? Quotes.longBreak : Quotes.countdown
         heading.stringValue = Quotes.random(quoteList)
         heading.textColor = Drac.purple

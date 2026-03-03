@@ -1,6 +1,12 @@
 import Cocoa
 
-class OnboardingController: NSObject, NSWindowDelegate {
+// Borderless window that can become key but cannot be moved
+private class FixedWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+class OnboardingController: NSObject {
     static let didCompleteNotification = Notification.Name("CountTongulaOnboardingComplete")
 
     let window: NSWindow
@@ -9,163 +15,197 @@ class OnboardingController: NSObject, NSWindowDelegate {
     var durationSlider: NSSlider!
     var durationLabel: NSTextField!
 
+    private let W: CGFloat = 500
+    private let H: CGFloat = 520
+
     override init() {
-        window = NSWindow(
+        let win = FixedWindow(
             contentRect: NSRect(x: 0, y: 0, width: 500, height: 520),
-            styleMask: [.titled, .closable],
+            styleMask: .borderless,
             backing: .buffered,
             defer: false
         )
+        win.appearance = NSAppearance(named: .darkAqua)
+        win.backgroundColor = .clear
+        win.isOpaque = false
+        win.isMovableByWindowBackground = false
+        win.hasShadow = true
+        win.level = .floating
+        self.window = win
+
         super.init()
-        window.backgroundColor = Drac.background
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.isReleasedWhenClosed = false
-        window.delegate = self
         buildUI()
+
+        // Always dead center on the screen with the mouse cursor
+        let mouseLocation = NSEvent.mouseLocation
+        let targetScreen = NSScreen.screens.first(where: { NSMouseInRect(mouseLocation, $0.frame, false) })
+            ?? NSScreen.main
+        if let screen = targetScreen {
+            let sf = screen.visibleFrame
+            let wf = win.frame
+            let x = sf.minX + (sf.width - wf.width) / 2
+            let y = sf.minY + (sf.height - wf.height) / 2
+            win.setFrameOrigin(NSPoint(x: x, y: y))
+        } else {
+            win.center()
+        }
     }
 
+    // Frame-based layout — no Auto Layout ambiguity.
     func buildUI() {
-        guard let contentView = window.contentView else { return }
-        contentView.wantsLayer = true
-        contentView.layer?.backgroundColor = Drac.background.cgColor
+        guard let cv = window.contentView else { return }
+        cv.wantsLayer = true
+        cv.layer?.backgroundColor = Drac.background.cgColor
+        cv.layer?.cornerRadius = 16
+        cv.layer?.masksToBounds = true
 
-        // Mascot image
-        let mascotImage: NSImageView
-        let imagePath = assetPath("dracula.png")
-        if let img = NSImage(contentsOfFile: imagePath) {
-            mascotImage = NSImageView(image: img)
-        } else if let img = NSImage(contentsOfFile: assetPath("dracula.svg")) {
-            mascotImage = NSImageView(image: img)
-        } else {
-            mascotImage = NSImageView()
+        // ── Mascot (centered, top — clipped to circle) ──
+        let mascotSize: CGFloat = 120
+        let mascotY = H - 36 - mascotSize
+        let mascotImage = NSImageView(frame: NSRect(
+            x: (W - mascotSize) / 2, y: mascotY, width: mascotSize, height: mascotSize
+        ))
+        mascotImage.imageScaling = .scaleProportionallyDown
+        mascotImage.wantsLayer = true
+        if let img = NSImage(contentsOfFile: assetPath("dracula.svg"))
+                  ?? NSImage(contentsOfFile: assetPath("dracula.png")) {
+            mascotImage.image = img
         }
-        mascotImage.translatesAutoresizingMaskIntoConstraints = false
-        mascotImage.imageScaling = .scaleProportionallyUpOrDown
-        contentView.addSubview(mascotImage)
+        cv.addSubview(mascotImage)
 
-        // Welcome heading
-        let headingLabel = makeLabel("Welcome to Count Tongula's Eye Break", size: 20, weight: .bold, color: Drac.purple)
-        headingLabel.alignment = .center
-        headingLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(headingLabel)
+        // Floating animation (matches the break window)
+        let floatAnim = CABasicAnimation(keyPath: "transform.translation.y")
+        floatAnim.fromValue = 0
+        floatAnim.toValue = -5
+        floatAnim.duration = 2.0
+        floatAnim.autoreverses = true
+        floatAnim.repeatCount = .infinity
+        floatAnim.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        mascotImage.layer?.add(floatAnim, forKey: "float")
 
-        // Rule explanation
+        // ── Heading ──
+        let headingH: CGFloat = 28
+        let headingY = mascotY - 14 - headingH
+        let heading = NSTextField(frame: NSRect(x: 24, y: headingY, width: W - 48, height: headingH))
+        heading.stringValue = "Welcome to Count Tongula's Eye Break"
+        heading.font = NSFont.systemFont(ofSize: 20, weight: .bold)
+        heading.textColor = Drac.purple
+        heading.backgroundColor = .clear
+        heading.isBezeled = false
+        heading.isEditable = false
+        heading.isSelectable = false
+        heading.alignment = .center
+        cv.addSubview(heading)
+
+        // ── Rule text ──
         let ruleText = "Every 20 minutes, take a 20-second break\nand look at something 20 feet away.\n\nThe Count will remind you."
-        let ruleLabel = makeLabel(ruleText, size: 14, weight: .regular, color: Drac.foreground)
+        let ruleH: CGFloat = 80
+        let ruleY = headingY - 8 - ruleH
+        let ruleLabel = NSTextField(frame: NSRect(x: 40, y: ruleY, width: W - 80, height: ruleH))
+        ruleLabel.stringValue = ruleText
+        ruleLabel.font = NSFont.systemFont(ofSize: 14)
+        ruleLabel.textColor = Drac.foreground
+        ruleLabel.backgroundColor = .clear
+        ruleLabel.isBezeled = false
+        ruleLabel.isEditable = false
+        ruleLabel.isSelectable = false
         ruleLabel.alignment = .center
         ruleLabel.maximumNumberOfLines = 0
-        ruleLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(ruleLabel)
+        ruleLabel.lineBreakMode = .byWordWrapping
+        cv.addSubview(ruleLabel)
+
+        // ── Slider rows (aligned: both labels 110px, sliders same width) ──
+        let rowH: CGFloat = 24
+        let labelW: CGFloat = 110  // Same width for both row labels
+        let valueW: CGFloat = 60
+        let sliderX: CGFloat = 32 + labelW + 12
+        let sliderW: CGFloat = W - sliderX - 8 - valueW - 32
 
         // Break interval row
-        let intervalRowLabel = makeLabel("Break every", size: 13, weight: .regular, color: Drac.foreground)
-        intervalRowLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(intervalRowLabel)
+        let sliderRowY = ruleY - 24 - rowH
 
-        intervalSlider = NSSlider(value: 20, minValue: 5, maxValue: 60, target: self, action: #selector(intervalChanged))
-        intervalSlider.translatesAutoresizingMaskIntoConstraints = false
-        intervalSlider.isContinuous = true
-        contentView.addSubview(intervalSlider)
+        let intervalRowLabel = makeField("Break every", size: 13, color: Drac.cyan)
+        intervalRowLabel.frame = NSRect(x: 32, y: sliderRowY, width: labelW, height: rowH)
+        cv.addSubview(intervalRowLabel)
 
-        intervalLabel = makeLabel("20 min", size: 13, weight: .regular, color: Drac.comment)
+        intervalLabel = makeField("20 min", size: 13, color: Drac.comment)
         intervalLabel.alignment = .right
-        intervalLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(intervalLabel)
+        intervalLabel.frame = NSRect(x: W - 32 - valueW, y: sliderRowY, width: valueW, height: rowH)
+        cv.addSubview(intervalLabel)
+
+        intervalSlider = NSSlider(frame: NSRect(x: sliderX, y: sliderRowY, width: sliderW, height: rowH))
+        intervalSlider.minValue = 5
+        intervalSlider.maxValue = 60
+        intervalSlider.intValue = 20
+        intervalSlider.isContinuous = true
+        intervalSlider.target = self
+        intervalSlider.action = #selector(intervalChanged)
+        cv.addSubview(intervalSlider)
 
         // Break duration row
-        let durationRowLabel = makeLabel("Break duration", size: 13, weight: .regular, color: Drac.foreground)
-        durationRowLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(durationRowLabel)
+        let durationRowY = sliderRowY - 16 - rowH
 
-        durationSlider = NSSlider(value: 20, minValue: 10, maxValue: 60, target: self, action: #selector(durationChanged))
-        durationSlider.translatesAutoresizingMaskIntoConstraints = false
-        durationSlider.isContinuous = true
-        contentView.addSubview(durationSlider)
+        let durationRowLabel = makeField("Break duration", size: 13, color: Drac.cyan)
+        durationRowLabel.frame = NSRect(x: 32, y: durationRowY, width: labelW, height: rowH)
+        cv.addSubview(durationRowLabel)
 
-        durationLabel = makeLabel("20 sec", size: 13, weight: .regular, color: Drac.comment)
+        durationLabel = makeField("20 sec", size: 13, color: Drac.comment)
         durationLabel.alignment = .right
-        durationLabel.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(durationLabel)
+        durationLabel.frame = NSRect(x: W - 32 - valueW, y: durationRowY, width: valueW, height: rowH)
+        cv.addSubview(durationLabel)
 
-        // Get Started button
+        durationSlider = NSSlider(frame: NSRect(x: sliderX, y: durationRowY, width: sliderW, height: rowH))
+        durationSlider.minValue = 5
+        durationSlider.maxValue = 60
+        durationSlider.intValue = 20
+        durationSlider.isContinuous = true
+        durationSlider.target = self
+        durationSlider.action = #selector(durationChanged)
+        cv.addSubview(durationSlider)
+
+        // ── "Begin the Night Watch" button ──
+        let btnW: CGFloat = 220
+        let btnH: CGFloat = 44
+        let btnY = durationRowY - 32 - btnH
         let startButton = HoverButton(
             "Begin the Night Watch",
-            bg: Drac.purple,
-            hover: Drac.pink,
+            bg: Drac.green,
+            hover: Drac.cyan,
             fg: Drac.background,
             target: self,
             action: #selector(getStarted)
         )
-        startButton.translatesAutoresizingMaskIntoConstraints = false
-        contentView.addSubview(startButton)
+        startButton.frame = NSRect(x: (W - btnW) / 2, y: btnY, width: btnW, height: btnH)
+        startButton.translatesAutoresizingMaskIntoConstraints = true
+        cv.addSubview(startButton)
 
-        // Skip link
-        let skipButton = HoverButton(
+        // ── "I'll configure later" link ──
+        let skipButton = HoverLink(
             "I'll configure later",
-            bg: Drac.background,
-            hover: Drac.background,
-            fg: Drac.comment,
+            color: Drac.comment,
+            hover: Drac.foreground,
+            size: 12,
             target: self,
             action: #selector(skipTapped)
         )
-        skipButton.translatesAutoresizingMaskIntoConstraints = false
-        skipButton.font = NSFont.systemFont(ofSize: 12)
-        contentView.addSubview(skipButton)
+        skipButton.translatesAutoresizingMaskIntoConstraints = true
+        skipButton.sizeToFit()
+        let skipW = skipButton.frame.width
+        skipButton.frame = NSRect(x: (W - skipW) / 2, y: btnY - 12 - 20, width: skipW, height: 20)
+        cv.addSubview(skipButton)
+    }
 
-        NSLayoutConstraint.activate([
-            // Mascot: 120x120 centered near top
-            mascotImage.widthAnchor.constraint(equalToConstant: 120),
-            mascotImage.heightAnchor.constraint(equalToConstant: 120),
-            mascotImage.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            mascotImage.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 24),
-
-            // Heading below mascot
-            headingLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            headingLabel.topAnchor.constraint(equalTo: mascotImage.bottomAnchor, constant: 16),
-            headingLabel.leadingAnchor.constraint(greaterThanOrEqualTo: contentView.leadingAnchor, constant: 24),
-            headingLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -24),
-
-            // Rule text below heading
-            ruleLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            ruleLabel.topAnchor.constraint(equalTo: headingLabel.bottomAnchor, constant: 12),
-            ruleLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 40),
-            ruleLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -40),
-
-            // Break interval row
-            intervalRowLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            intervalRowLabel.centerYAnchor.constraint(equalTo: intervalSlider.centerYAnchor),
-
-            intervalLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            intervalLabel.centerYAnchor.constraint(equalTo: intervalSlider.centerYAnchor),
-            intervalLabel.widthAnchor.constraint(equalToConstant: 60),
-
-            intervalSlider.topAnchor.constraint(equalTo: ruleLabel.bottomAnchor, constant: 24),
-            intervalSlider.trailingAnchor.constraint(equalTo: intervalLabel.leadingAnchor, constant: -8),
-            intervalSlider.leadingAnchor.constraint(equalTo: intervalRowLabel.trailingAnchor, constant: 12),
-
-            // Break duration row
-            durationRowLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            durationRowLabel.centerYAnchor.constraint(equalTo: durationSlider.centerYAnchor),
-
-            durationLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            durationLabel.centerYAnchor.constraint(equalTo: durationSlider.centerYAnchor),
-            durationLabel.widthAnchor.constraint(equalToConstant: 60),
-
-            durationSlider.topAnchor.constraint(equalTo: intervalSlider.bottomAnchor, constant: 16),
-            durationSlider.trailingAnchor.constraint(equalTo: durationLabel.leadingAnchor, constant: -8),
-            durationSlider.leadingAnchor.constraint(equalTo: durationRowLabel.trailingAnchor, constant: 12),
-
-            // Get Started button
-            startButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            startButton.topAnchor.constraint(equalTo: durationSlider.bottomAnchor, constant: 32),
-            startButton.widthAnchor.constraint(equalToConstant: 200),
-            startButton.heightAnchor.constraint(equalToConstant: 44),
-
-            // Skip link
-            skipButton.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            skipButton.topAnchor.constraint(equalTo: startButton.bottomAnchor, constant: 12),
-        ])
+    // Simple text field factory (frame-based, no Auto Layout)
+    private func makeField(_ text: String, size: CGFloat, color: NSColor) -> NSTextField {
+        let f = NSTextField(frame: .zero)
+        f.stringValue = text
+        f.font = NSFont.systemFont(ofSize: size)
+        f.textColor = color
+        f.backgroundColor = .clear
+        f.isBezeled = false
+        f.isEditable = false
+        f.isSelectable = false
+        return f
     }
 
     @objc func getStarted() {
@@ -174,13 +214,13 @@ class OnboardingController: NSObject, NSWindowDelegate {
         Preferences.shared.breakInterval = intervalMin * 60
         Preferences.shared.breakDuration = durationSec
         Preferences.shared.hasCompletedOnboarding = true
-        window.close()
+        window.orderOut(nil)
         NotificationCenter.default.post(name: OnboardingController.didCompleteNotification, object: nil)
     }
 
     @objc func skipTapped() {
         Preferences.shared.hasCompletedOnboarding = true
-        window.close()
+        window.orderOut(nil)
         NotificationCenter.default.post(name: OnboardingController.didCompleteNotification, object: nil)
     }
 
@@ -192,13 +232,5 @@ class OnboardingController: NSObject, NSWindowDelegate {
     @objc func durationChanged() {
         let val = Int(durationSlider.intValue)
         durationLabel.stringValue = "\(val) sec"
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        // Mark onboarding complete if closed via window button without explicitly choosing
-        if !Preferences.shared.hasCompletedOnboarding {
-            Preferences.shared.hasCompletedOnboarding = true
-            NotificationCenter.default.post(name: OnboardingController.didCompleteNotification, object: nil)
-        }
     }
 }
