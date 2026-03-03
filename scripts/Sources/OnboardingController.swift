@@ -73,7 +73,7 @@ class OnboardingController: NSObject {
         ))
         mascotImage.imageScaling = .scaleProportionallyDown
         mascotImage.wantsLayer = true
-        if let img = NSImage(contentsOfFile: assetPath("dracula.svg"))
+        if let img = NSImage(contentsOfFile: assetPath("alex_final.png"))
                   ?? NSImage(contentsOfFile: assetPath("dracula.png")) {
             mascotImage.image = img
         }

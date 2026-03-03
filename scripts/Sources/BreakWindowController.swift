@@ -81,8 +81,8 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         let iv = NSImageView()
         iv.translatesAutoresizingMaskIntoConstraints = false
         iv.imageScaling = .scaleProportionallyDown
-        if let img = NSImage(contentsOfFile: assetPath("dracula.png"))
-                  ?? NSImage(contentsOfFile: assetPath("dracula.svg")) {
+        if let img = NSImage(contentsOfFile: assetPath("alex_final.png"))
+                  ?? NSImage(contentsOfFile: assetPath("dracula.png")) {
             iv.image = img
         }
         self.mascot = iv

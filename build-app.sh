@@ -45,9 +45,9 @@ mkdir -p "$APP_BUNDLE/Contents/Resources/assets"
 cp "$BUILD_DIR/eye_break_ui" "$APP_BUNDLE/Contents/MacOS/eye_break_ui"
 
 # Copy assets
+cp "$REPO_DIR/assets/alex_final.png" "$APP_BUNDLE/Contents/Resources/assets/"
 cp "$REPO_DIR/assets/dracula.png" "$APP_BUNDLE/Contents/Resources/assets/"
 cp "$REPO_DIR/assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
-[ -f "$REPO_DIR/assets/alex.png" ] && cp "$REPO_DIR/assets/alex.png" "$APP_BUNDLE/Contents/Resources/assets/"
 
 # Launcher script that sets up LaunchAgent on first run, then executes the binary
 cat > "$APP_BUNDLE/Contents/MacOS/run" <<'LAUNCHER'
