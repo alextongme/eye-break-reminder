@@ -119,8 +119,10 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 PLIST
 ok "App bundle created"
 
-# ── Strip quarantine ──
-xattr -cr "$APP_BUNDLE" 2>/dev/null || true
+# ── Ad-hoc code sign ──
+info "Code signing ..."
+codesign --force --deep --sign - "$APP_BUNDLE"
+ok "Ad-hoc signed"
 
 # ── Create zip for distribution ──
 info "Creating zip ..."
