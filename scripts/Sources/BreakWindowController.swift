@@ -18,6 +18,19 @@ protocol BreakWindowDelegate: AnyObject {
     func breakDidFinish(type: BreakType, result: BreakResult)
 }
 
+// MARK: - Companion (non-primary screen mirror)
+
+private struct CompanionViews {
+    let mascot: NSImageView
+    let heading: NSTextField
+    let body: NSTextField
+    let detail: NSTextField
+    let countdownLbl: NSTextField
+    let countdownSub: NSTextField
+    let progressBar: ProgressBarView
+    let lottieView: LottieAnimationView?
+}
+
 // MARK: - BreakWindowController
 
 class BreakWindowController: NSObject, NSWindowDelegate {
@@ -46,6 +59,8 @@ class BreakWindowController: NSObject, NSWindowDelegate {
     private var animationFiles: [String] = []
     private var unusedAnimations: [String] = []
     private var escMonitor: Any?
+    private var wakeObserver: NSObjectProtocol?
+    private var companions: [(window: NSWindow, views: CompanionViews)] = []
 
     var primaryCenterX: NSLayoutConstraint!
     var primaryPaired: NSLayoutConstraint!
@@ -189,6 +204,16 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         av.translatesAutoresizingMaskIntoConstraints = false
         self.lottieView = av
 
+        // Restore animations after wake from sleep — CAAnimations freeze when
+        // macOS suspends the render server and the media-time clock jumps forward.
+        wakeObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.restoreAnimationsAfterWake()
+        }
+
         layout()
         showPrompt()
 
@@ -213,6 +238,13 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.3
             win.animator().alphaValue = 1.0
+        }
+
+        // Show companion windows on all other screens
+        let primaryScreen = targetScreen ?? NSScreen.main
+        for screen in NSScreen.screens where screen !== primaryScreen {
+            let comp = buildCompanion(on: screen)
+            companions.append(comp)
         }
     }
 
@@ -437,6 +469,8 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         }
         dismissBtn.isHidden = isStrict
         escHint.isHidden = true
+
+        syncCompanionsToPrompt()
     }
 
     func showCountdown() {
@@ -472,6 +506,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         lottieView?.isHidden = true
         lottieView?.stop()
 
+        syncCompanionsToCountdown()
         updateCountdown()
 
         timer?.invalidate()
@@ -502,6 +537,8 @@ class BreakWindowController: NSObject, NSWindowDelegate {
 
         let total = CGFloat(totalDuration > 0 ? totalDuration : 1)
         progressBar.progress = 1.0 - CGFloat(secondsLeft) / total
+
+        updateCompanionCountdowns()
     }
 
     func showComplete() {
@@ -573,6 +610,8 @@ class BreakWindowController: NSObject, NSWindowDelegate {
 
         lottieView?.isHidden = false
         loadRandomAnimation()
+
+        syncCompanionsToComplete(milestone: isMilestone, milestoneMsg: milestoneMsg)
 
         let delay = isMilestone ? max(Preferences.shared.autoQuitDelay, 12) : Preferences.shared.autoQuitDelay
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(delay)) { [weak self] in
@@ -662,11 +701,19 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             escMonitor = nil
         }
 
+        if let observer = wakeObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+            wakeObserver = nil
+        }
+
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.3
             self.window.animator().alphaValue = 0
             for ow in self.overlayWindows {
                 ow.animator().alphaValue = 0
+            }
+            for c in self.companions {
+                c.window.animator().alphaValue = 0
             }
         }, completionHandler: { [weak self] in
             guard let self = self else { return }
@@ -674,6 +721,10 @@ class BreakWindowController: NSObject, NSWindowDelegate {
                 ow.orderOut(nil)
             }
             self.overlayWindows.removeAll()
+            for c in self.companions {
+                c.window.orderOut(nil)
+            }
+            self.companions.removeAll()
             self.window.orderOut(nil)
             self.delegate?.breakDidFinish(type: self.breakType, result: result)
         })
@@ -1034,6 +1085,36 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         return path
     }
 
+    // MARK: - Wake Recovery
+
+    /// Rebuilds all CA-driven visuals that freeze when macOS sleeps.
+    /// The render server is suspended on sleep and CACurrentMediaTime() jumps
+    /// forward on wake, leaving beginTime-anchored animations expired/stuck.
+    private func restoreAnimationsAfterWake() {
+        // 1. Tear down and rebuild overlay windows (bats + clouds)
+        for ow in overlayWindows { ow.orderOut(nil) }
+        overlayWindows.removeAll()
+        if Preferences.shared.fullscreenOverlay && !isOnCompleteScreen {
+            showOverlays()
+        }
+
+        // 2. Restart Lottie
+        lottieView?.stop()
+        lottieView?.play()
+
+        // 3. Restart mascot float
+        mascot.layer?.removeAnimation(forKey: "float")
+        startMascotAnimation()
+
+        // 4. Restart companion mascot floats and Lottie animations
+        for c in companions {
+            c.views.mascot.layer?.removeAnimation(forKey: "float")
+            startMascotAnimation(for: c.views.mascot)
+            c.views.lottieView?.stop()
+            c.views.lottieView?.play()
+        }
+    }
+
     // MARK: - Mascot Animation
 
     private func startMascotAnimation() {
@@ -1048,5 +1129,279 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
 
         mascot.layer?.add(animation, forKey: "float")
+    }
+
+    private func startMascotAnimation(for imageView: NSImageView) {
+        imageView.wantsLayer = true
+        let animation = CABasicAnimation(keyPath: "transform.translation.y")
+        animation.fromValue = 0
+        animation.toValue = -9
+        animation.duration = 2.0
+        animation.autoreverses = true
+        animation.repeatCount = .infinity
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        imageView.layer?.add(animation, forKey: "float")
+    }
+
+    // MARK: - Companion Windows
+
+    private func buildCompanion(on screen: NSScreen) -> (window: NSWindow, views: CompanionViews) {
+        let win = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: fullHeight),
+            styleMask: [.titled, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        win.appearance = NSAppearance(named: .darkAqua)
+        win.titlebarAppearsTransparent = true
+        win.titleVisibility = .hidden
+        win.backgroundColor = Drac.background
+        win.isMovableByWindowBackground = false
+        win.hasShadow = true
+        win.level = .floating
+        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
+        guard let cv = win.contentView else {
+            fatalError("companion window has no contentView")
+        }
+        cv.wantsLayer = true
+        cv.layer?.backgroundColor = Drac.background.cgColor
+
+        // Mascot
+        let cMascot = NSImageView()
+        cMascot.translatesAutoresizingMaskIntoConstraints = false
+        cMascot.imageScaling = .scaleProportionallyDown
+        cMascot.image = mascot.image
+
+        // Labels
+        let cHeading      = makeLabel("", size: 22, weight: .bold, color: Drac.purple)
+        let cBody         = makeLabel("", size: 17, weight: .regular, color: Drac.foreground)
+        let cDetail        = makeLabel("", size: 15, weight: .medium, color: Drac.cyan)
+        let cCountdownLbl: NSTextField = {
+            let lbl = NSTextField(labelWithString: "")
+            lbl.font = dmMono(size: 80, weight: .medium)
+            lbl.textColor = Drac.green
+            lbl.alignment = .center
+            lbl.lineBreakMode = .byWordWrapping
+            lbl.maximumNumberOfLines = 0
+            lbl.translatesAutoresizingMaskIntoConstraints = false
+            return lbl
+        }()
+        let cCountdownSub = makeLabel("", size: 14, weight: .regular, color: Drac.comment)
+        let cProgressBar  = ProgressBarView()
+        cProgressBar.translatesAutoresizingMaskIntoConstraints = false
+
+        // Lottie
+        var cLottie: LottieAnimationView?
+        if !animationFiles.isEmpty {
+            let lv = LottieAnimationView()
+            lv.loopMode = .loop
+            lv.translatesAutoresizingMaskIntoConstraints = false
+            cLottie = lv
+        }
+
+        // Add subviews
+        for v in [cMascot, cHeading, cBody, cDetail, cCountdownLbl, cCountdownSub, cProgressBar] as [NSView] {
+            cv.addSubview(v)
+        }
+        if let lv = cLottie { cv.addSubview(lv) }
+
+        // Multi-line wrapping
+        for lbl in [cHeading, cBody, cDetail, cCountdownSub] {
+            lbl.maximumNumberOfLines = 0
+            lbl.lineBreakMode = .byWordWrapping
+            lbl.preferredMaxLayoutWidth = 396
+            lbl.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        }
+
+        // Layout
+        let mascotTop = cMascot.topAnchor.constraint(equalTo: cv.topAnchor, constant: 32)
+        mascotTop.isActive = true
+
+        NSLayoutConstraint.activate([
+            cMascot.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+            cMascot.widthAnchor.constraint(equalToConstant: 110),
+            cMascot.heightAnchor.constraint(equalToConstant: 110),
+
+            cHeading.topAnchor.constraint(equalTo: cMascot.bottomAnchor, constant: 20),
+            cHeading.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 32),
+            cHeading.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -32),
+
+            cBody.topAnchor.constraint(equalTo: cHeading.bottomAnchor, constant: 14),
+            cBody.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 40),
+            cBody.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -40),
+
+            cDetail.topAnchor.constraint(equalTo: cBody.bottomAnchor, constant: 14),
+            cDetail.leadingAnchor.constraint(equalTo: cv.leadingAnchor, constant: 40),
+            cDetail.trailingAnchor.constraint(equalTo: cv.trailingAnchor, constant: -40),
+
+            cCountdownLbl.topAnchor.constraint(equalTo: cHeading.bottomAnchor, constant: 20),
+            cCountdownLbl.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+
+            cCountdownSub.topAnchor.constraint(equalTo: cCountdownLbl.bottomAnchor, constant: -2),
+            cCountdownSub.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+
+            cProgressBar.topAnchor.constraint(equalTo: cCountdownSub.bottomAnchor, constant: 24),
+            cProgressBar.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+            cProgressBar.widthAnchor.constraint(equalToConstant: 300),
+            cProgressBar.heightAnchor.constraint(equalToConstant: 6),
+        ])
+
+        if let lv = cLottie {
+            NSLayoutConstraint.activate([
+                lv.topAnchor.constraint(equalTo: cDetail.bottomAnchor, constant: 16),
+                lv.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+                lv.widthAnchor.constraint(equalToConstant: 180),
+                lv.heightAnchor.constraint(equalToConstant: 180),
+            ])
+        }
+
+        let views = CompanionViews(
+            mascot: cMascot,
+            heading: cHeading,
+            body: cBody,
+            detail: cDetail,
+            countdownLbl: cCountdownLbl,
+            countdownSub: cCountdownSub,
+            progressBar: cProgressBar,
+            lottieView: cLottie
+        )
+
+        // Mirror current primary state
+        syncCompanion(views, toPromptFor: breakType)
+
+        // Position on screen
+        let sf = screen.visibleFrame
+        let wf = win.frame
+        let x = sf.minX + (sf.width - wf.width) / 2
+        let y = sf.minY + (sf.height - wf.height) / 2
+        win.setFrameOrigin(NSPoint(x: x, y: y))
+
+        startMascotAnimation(for: cMascot)
+
+        win.alphaValue = 0
+        win.orderFront(nil)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0.3
+            win.animator().alphaValue = 1.0
+        }
+
+        return (window: win, views: views)
+    }
+
+    // MARK: - Companion State Sync
+
+    private func syncCompanion(_ v: CompanionViews, toPromptFor type: BreakType) {
+        v.heading.stringValue = (type == .long)
+            ? "Time for a stretch break!" : "Time for an eye break!"
+        v.heading.textColor = Drac.purple
+
+        if type == .long {
+            let longMin = Preferences.shared.longBreakDuration / 60
+            v.body.stringValue = "Stand up, stretch, and move around."
+            v.detail.stringValue = "This is a \(longMin)-minute break. Ready?"
+        } else {
+            v.body.stringValue = "Look at something 20 feet away for 20 seconds."
+            v.detail.stringValue = ""
+        }
+
+        v.body.isHidden = false
+        v.detail.isHidden = false
+        v.countdownLbl.isHidden = true
+        v.countdownSub.isHidden = true
+        v.progressBar.isHidden = true
+        v.lottieView?.isHidden = false
+        loadRandomAnimation(into: v.lottieView)
+    }
+
+    private func syncCompanionsToPrompt() {
+        for c in companions {
+            syncCompanion(c.views, toPromptFor: breakType)
+        }
+    }
+
+    private func syncCompanionsToCountdown() {
+        let quoteList = (breakType == .long) ? Quotes.longBreak : Quotes.countdown
+        for c in companions {
+            let v = c.views
+            v.heading.stringValue = Quotes.random(quoteList)
+            v.heading.textColor = Drac.purple
+            v.body.isHidden = true
+            v.detail.isHidden = true
+            v.countdownLbl.isHidden = false
+            v.countdownSub.isHidden = false
+            v.progressBar.isHidden = false
+            v.lottieView?.isHidden = true
+            v.lottieView?.stop()
+        }
+        updateCompanionCountdowns()
+    }
+
+    private func updateCompanionCountdowns() {
+        for c in companions {
+            let v = c.views
+            if secondsLeft >= 60 {
+                let minutes = secondsLeft / 60
+                let seconds = secondsLeft % 60
+                v.countdownLbl.stringValue = String(format: "%d:%02d", minutes, seconds)
+                v.countdownSub.stringValue = "remaining"
+            } else {
+                v.countdownLbl.stringValue = "\(secondsLeft)"
+                v.countdownSub.stringValue = "seconds remaining"
+            }
+            let total = CGFloat(totalDuration > 0 ? totalDuration : 1)
+            v.progressBar.progress = 1.0 - CGFloat(secondsLeft) / total
+        }
+    }
+
+    private func syncCompanionsToComplete(milestone: Bool, milestoneMsg: String?) {
+        for c in companions {
+            let v = c.views
+            if milestone {
+                v.heading.stringValue = "🏆 Milestone Reached!"
+                v.heading.textColor = Drac.orange
+                v.body.stringValue = milestoneMsg ?? ""
+                v.body.textColor = Drac.pink
+                v.detail.stringValue = "Streak: \(Statistics.shared.nextStreak) breaks"
+                v.detail.textColor = Drac.yellow
+
+                let cv = c.window.contentView!
+                cv.layer?.backgroundColor = NSColor(srgbRed: 0x30/255.0, green: 0x2B/255.0, blue: 0x44/255.0, alpha: 1).cgColor
+                cv.layer?.borderWidth = 2
+                cv.layer?.borderColor = Drac.orange.cgColor
+                cv.layer?.shadowColor = Drac.orange.cgColor
+                cv.layer?.shadowRadius = 12
+                cv.layer?.shadowOpacity = 0.6
+                cv.layer?.shadowOffset = .zero
+            } else {
+                v.heading.stringValue = "Break complete!"
+                v.heading.textColor = Drac.green
+                v.body.stringValue = Quotes.random(Quotes.complete)
+                v.body.textColor = Drac.foreground
+                v.detail.stringValue = "You may return to your screen."
+                v.detail.textColor = Drac.foreground
+
+                let cv = c.window.contentView!
+                cv.layer?.backgroundColor = Drac.background.cgColor
+                cv.layer?.borderWidth = 0
+                cv.layer?.shadowOpacity = 0
+            }
+            v.body.isHidden = false
+            v.detail.isHidden = false
+            v.countdownLbl.isHidden = true
+            v.countdownSub.isHidden = true
+            v.progressBar.isHidden = true
+            v.lottieView?.isHidden = false
+            loadRandomAnimation(into: v.lottieView)
+        }
+    }
+
+    private func loadRandomAnimation(into lottieView: LottieAnimationView?) {
+        guard let lv = lottieView, !animationFiles.isEmpty else { return }
+        let path = animationFiles.randomElement()!
+        if let animation = LottieAnimation.filepath(path) {
+            lv.animation = animation
+            lv.play()
+        }
     }
 }
