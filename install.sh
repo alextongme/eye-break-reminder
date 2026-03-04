@@ -86,6 +86,18 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 PLIST
 ok "App bundle created"
 
+# ── Restart app if it was running ──
+if pgrep -f "eye_break_ui" >/dev/null 2>&1; then
+    info "Restarting app ..."
+    pkill -f "eye_break_ui" 2>/dev/null || true
+    sleep 0.5
+    open "$APP_BUNDLE"
+    ok "App restarted"
+else
+    info "App is not running. Launch it with:"
+    echo "     open \"$APP_BUNDLE\""
+fi
+
 echo ""
 echo "  🦇 Count Tongula will remind you to rest your eyes."
 echo "     Menu bar icon: 🦇 with countdown timer."
