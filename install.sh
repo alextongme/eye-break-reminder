@@ -90,7 +90,12 @@ ok "App bundle created"
 if pgrep -f "eye_break_ui" >/dev/null 2>&1; then
     info "Restarting app ..."
     pkill -f "eye_break_ui" 2>/dev/null || true
-    sleep 0.5
+    # Wait for the old process to fully exit so the single-instance
+    # flock is released before the new process tries to acquire it.
+    for _ in $(seq 1 20); do
+        pgrep -f "eye_break_ui" >/dev/null 2>&1 || break
+        sleep 0.25
+    done
     open "$APP_BUNDLE"
     ok "App restarted"
 else
