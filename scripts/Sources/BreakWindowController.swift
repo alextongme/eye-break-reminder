@@ -29,6 +29,13 @@ private struct CompanionViews {
     let countdownSub: NSTextField
     let progressBar: ProgressBarView
     let lottieView: LottieAnimationView?
+    let primaryBtn: HoverButton
+    let secondaryBtn: HoverButton
+    let dismissBtn: HoverLink
+    let escHint: NSTextField
+    let enterHint: NSTextField
+    let primaryCenterX: NSLayoutConstraint
+    let primaryPaired: NSLayoutConstraint
 }
 
 // MARK: - BreakWindowController
@@ -1200,8 +1207,32 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             cLottie = lv
         }
 
+        // Buttons — target the same actions on self
+        let cPrimaryBtn = HoverButton(
+            "Start Break",
+            bg: Drac.purple, hover: Drac.pink, fg: Drac.foreground,
+            target: self, action: #selector(primaryTapped)
+        )
+        let cSecondaryBtn = HoverButton(
+            "Snooze 5 min",
+            bg: Drac.currentLine, hover: Drac.comment, fg: Drac.foreground,
+            target: self, action: #selector(snoozeTapped)
+        )
+        let cDismissBtn = HoverLink(
+            "Not now—remind me later",
+            color: Drac.comment, hover: Drac.pink, size: 13,
+            target: self, action: #selector(dismissTapped)
+        )
+        let cEscHint = makeLabel("Press Esc to skip", size: 11, weight: .regular, color: Drac.comment)
+        cEscHint.alphaValue = 0.6
+        cEscHint.isHidden = true
+        let cEnterHint = makeLabel("Press Enter to dismiss", size: 11, weight: .regular, color: Drac.comment)
+        cEnterHint.alphaValue = 0.6
+        cEnterHint.isHidden = true
+
         // Add subviews
-        for v in [cMascot, cHeading, cBody, cDetail, cCountdownLbl, cCountdownSub, cProgressBar] as [NSView] {
+        for v in [cMascot, cHeading, cBody, cDetail, cCountdownLbl, cCountdownSub,
+                  cProgressBar, cPrimaryBtn, cSecondaryBtn, cDismissBtn, cEscHint, cEnterHint] as [NSView] {
             cv.addSubview(v)
         }
         if let lv = cLottie { cv.addSubview(lv) }
@@ -1214,7 +1245,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             lbl.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
 
-        // Layout
+        // Layout — mirrors the primary window
         let mascotTop = cMascot.topAnchor.constraint(equalTo: cv.topAnchor, constant: 32)
         mascotTop.isActive = true
 
@@ -1245,11 +1276,36 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             cProgressBar.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
             cProgressBar.widthAnchor.constraint(equalToConstant: 300),
             cProgressBar.heightAnchor.constraint(equalToConstant: 6),
+
+            cPrimaryBtn.bottomAnchor.constraint(equalTo: cDismissBtn.topAnchor, constant: -14),
+            cPrimaryBtn.widthAnchor.constraint(equalToConstant: 160),
+            cPrimaryBtn.heightAnchor.constraint(equalToConstant: 42),
+
+            cSecondaryBtn.bottomAnchor.constraint(equalTo: cDismissBtn.topAnchor, constant: -14),
+            cSecondaryBtn.leadingAnchor.constraint(equalTo: cv.centerXAnchor, constant: 8),
+            cSecondaryBtn.widthAnchor.constraint(equalToConstant: 160),
+            cSecondaryBtn.heightAnchor.constraint(equalToConstant: 42),
+
+            cDismissBtn.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+            cDismissBtn.bottomAnchor.constraint(equalTo: cv.bottomAnchor, constant: -28),
+
+            cEscHint.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+            cEscHint.topAnchor.constraint(equalTo: cDismissBtn.bottomAnchor, constant: 8),
+
+            cEnterHint.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
+            cEnterHint.topAnchor.constraint(equalTo: cPrimaryBtn.bottomAnchor, constant: 12),
         ])
 
+        let cPrimaryCenterX = cPrimaryBtn.centerXAnchor.constraint(equalTo: cv.centerXAnchor)
+        let cPrimaryPaired = cPrimaryBtn.trailingAnchor.constraint(equalTo: cv.centerXAnchor, constant: -8)
+
         if let lv = cLottie {
+            let spacer = NSLayoutGuide()
+            cv.addLayoutGuide(spacer)
             NSLayoutConstraint.activate([
-                lv.topAnchor.constraint(equalTo: cDetail.bottomAnchor, constant: 16),
+                spacer.topAnchor.constraint(equalTo: cDetail.bottomAnchor),
+                spacer.bottomAnchor.constraint(equalTo: cPrimaryBtn.topAnchor),
+                lv.centerYAnchor.constraint(equalTo: spacer.centerYAnchor, constant: -10),
                 lv.centerXAnchor.constraint(equalTo: cv.centerXAnchor),
                 lv.widthAnchor.constraint(equalToConstant: 180),
                 lv.heightAnchor.constraint(equalToConstant: 180),
@@ -1264,7 +1320,14 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             countdownLbl: cCountdownLbl,
             countdownSub: cCountdownSub,
             progressBar: cProgressBar,
-            lottieView: cLottie
+            lottieView: cLottie,
+            primaryBtn: cPrimaryBtn,
+            secondaryBtn: cSecondaryBtn,
+            dismissBtn: cDismissBtn,
+            escHint: cEscHint,
+            enterHint: cEnterHint,
+            primaryCenterX: cPrimaryCenterX,
+            primaryPaired: cPrimaryPaired
         )
 
         // Mirror current primary state
@@ -1310,8 +1373,26 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         v.countdownLbl.isHidden = true
         v.countdownSub.isHidden = true
         v.progressBar.isHidden = true
+        v.enterHint.isHidden = true
         v.lottieView?.isHidden = false
         loadRandomAnimation(into: v.lottieView)
+
+        v.primaryBtn.setLabel("Start Break")
+        v.primaryBtn.isHidden = false
+        v.dismissBtn.isHidden = false
+        v.escHint.isHidden = true
+
+        let isStrict = Preferences.shared.strictMode
+        if allowSnooze && !isStrict {
+            v.secondaryBtn.isHidden = false
+            v.primaryCenterX.isActive = false
+            v.primaryPaired.isActive = true
+        } else {
+            v.secondaryBtn.isHidden = true
+            v.primaryPaired.isActive = false
+            v.primaryCenterX.isActive = true
+        }
+        v.dismissBtn.isHidden = isStrict
     }
 
     private func syncCompanionsToPrompt() {
@@ -1322,6 +1403,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
 
     private func syncCompanionsToCountdown() {
         let quoteList = (breakType == .long) ? Quotes.longBreak : Quotes.countdown
+        let isStrict = Preferences.shared.strictMode
         for c in companions {
             let v = c.views
             v.heading.stringValue = Quotes.random(quoteList)
@@ -1331,8 +1413,14 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             v.countdownLbl.isHidden = false
             v.countdownSub.isHidden = false
             v.progressBar.isHidden = false
+            v.enterHint.isHidden = true
             v.lottieView?.isHidden = true
             v.lottieView?.stop()
+
+            v.primaryBtn.isHidden = true
+            v.secondaryBtn.isHidden = true
+            v.dismissBtn.isHidden = isStrict
+            v.escHint.isHidden = isStrict
         }
         updateCompanionCountdowns()
     }
@@ -1393,6 +1481,15 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             v.progressBar.isHidden = true
             v.lottieView?.isHidden = false
             loadRandomAnimation(into: v.lottieView)
+
+            v.primaryBtn.setLabel("Thanks, Count!")
+            v.primaryBtn.isHidden = false
+            v.primaryPaired.isActive = false
+            v.primaryCenterX.isActive = true
+            v.secondaryBtn.isHidden = true
+            v.dismissBtn.isHidden = true
+            v.escHint.isHidden = true
+            v.enterHint.isHidden = false
         }
     }
 
