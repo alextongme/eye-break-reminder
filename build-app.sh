@@ -100,15 +100,33 @@ ZIP_NAME="CountTongulasEyeBreak-${VERSION}.zip"
 ditto -c -k --keepParent "$APP_NAME.app" "$ZIP_NAME"
 ok "Zip created → dist/$ZIP_NAME"
 
+# ── Create DMG for distribution ──
+info "Creating DMG ..."
+DMG_NAME="CountTongulasEyeBreak-${VERSION}.dmg"
+DMG_TEMP="$BUILD_DIR/dmg_staging"
+mkdir -p "$DMG_TEMP"
+cp -R "$APP_BUNDLE" "$DMG_TEMP/"
+ln -s /Applications "$DMG_TEMP/Applications"
+hdiutil create -volname "Count Tongula's Eye Break" \
+    -srcfolder "$DMG_TEMP" -ov -format UDZO \
+    "$BUILD_DIR/$DMG_NAME"
+cp "$BUILD_DIR/$DMG_NAME" "$BUILD_DIR/CountTongulasEyeBreak.dmg"
+rm -rf "$DMG_TEMP"
+ok "DMG created → dist/$DMG_NAME"
+ok "DMG copied → dist/CountTongulasEyeBreak.dmg (stable download URL)"
+
 # ── SHA256 for Cask ──
 SHA=$(shasum -a 256 "$ZIP_NAME" | awk '{print $1}')
+DMG_SHA=$(shasum -a 256 "$DMG_NAME" | awk '{print $1}')
 echo ""
 echo "  📦 Distribution files in dist/"
 echo "     $ZIP_NAME"
 echo "     SHA256: $SHA"
+echo "     $DMG_NAME"
+echo "     SHA256: $DMG_SHA"
 echo ""
 echo "  To release:"
 echo "     1. Create a GitHub release tagged v${VERSION}"
-echo "     2. Upload dist/$ZIP_NAME to the release"
+echo "     2. Upload dist/$ZIP_NAME and dist/$DMG_NAME to the release"
 echo "     3. Update the Homebrew Cask with the new URL and SHA"
 echo ""

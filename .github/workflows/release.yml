@@ -28,12 +28,16 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.VERSION }}"
           if gh release view "$GITHUB_REF_NAME" &>/dev/null; then
-            echo "Release $GITHUB_REF_NAME already exists, uploading asset"
+            echo "Release $GITHUB_REF_NAME already exists, uploading assets"
             gh release upload "$GITHUB_REF_NAME" \
-              "dist/CountTongulasEyeBreak-${VERSION}.zip" --clobber
+              "dist/CountTongulasEyeBreak-${VERSION}.zip" \
+              "dist/CountTongulasEyeBreak-${VERSION}.dmg" \
+              "dist/CountTongulasEyeBreak.dmg" --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
               "dist/CountTongulasEyeBreak-${VERSION}.zip" \
+              "dist/CountTongulasEyeBreak-${VERSION}.dmg" \
+              "dist/CountTongulasEyeBreak.dmg" \
               --title "$GITHUB_REF_NAME" \
               --generate-notes
           fi

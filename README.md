@@ -18,18 +18,22 @@ Every **20 minutes**, look at something **20 feet** away for **20 seconds**.
 
 ## Install
 
-### Homebrew (recommended)
+### Direct download (recommended)
 
-```bash
-brew tap alextongme/cask
-brew install --cask count-tongulas-eye-break
-```
+[**Download the latest DMG**](https://github.com/alextongme/count-tongulas-eye-break/releases/latest/download/CountTongulasEyeBreak.dmg)
 
-Homebrew will ask for your password during install — this is normal. It's needed to move the app to `/Applications` and clear the macOS Gatekeeper quarantine flag (the app is not code-signed with an Apple Developer certificate). If you see an "Apple could not verify" warning, run:
+Open the DMG, drag the app to Applications, and launch it. Since the app is not code-signed with an Apple Developer certificate, macOS may show an "Apple could not verify" warning. To fix this:
 
 ```bash
 sudo xattr -cr "/Applications/Count Tongula's Eye Break.app"
 open "/Applications/Count Tongula's Eye Break.app"
+```
+
+### Homebrew
+
+```bash
+brew tap alextongme/cask
+brew install --cask count-tongulas-eye-break
 ```
 
 ### From source
@@ -80,6 +84,7 @@ brew uninstall count-tongulas-eye-break
 - **Strict mode** -- disable skip and snooze to stay disciplined
 - **Statistics** -- streak tracking with vampire-themed milestone titles
 - **Launch at login** -- runs automatically via macOS LaunchAgent
+- **Auto-update** -- checks GitHub Releases for new versions and prompts you to download
 
 ---
 
@@ -118,8 +123,6 @@ brew uninstall count-tongulas-eye-break
 
 | Shortcut | Action |
 |----------|--------|
-| `Cmd + Shift + B` | Take a break now (via menu bar) |
-| `Cmd + Shift + P` | Pause / resume timer (via menu bar) |
 | `Esc` | Skip break (during countdown) |
 | `Enter` | Dismiss (on completion screen) |
 
@@ -141,6 +144,7 @@ Open **Settings** from the menu bar dropdown.
 | | Launch at login | On |
 | | Strict mode (no skip/snooze) | Off |
 | | Pause for meetings/presentations | On |
+| | Check for updates | On |
 | **Long Breaks** | Enabled | On |
 | | Frequency | Every 3 eye breaks |
 | | Duration | 5 min |
@@ -182,14 +186,16 @@ scripts/Sources/*.swift  -->  eye_break_ui (single binary, SwiftPM)
                               +-- Statistics (JSON persistence, streaks)
                               +-- SoundManager (14 macOS system sounds via afplay)
                               +-- Preferences (UserDefaults)
+                              +-- UpdateChecker (GitHub Releases polling)
+                              +-- UpdateAlertController (update prompt window)
 ```
 
 ### Releasing
 
-Tag a version and push — GitHub Actions builds the `.app`, creates a GitHub Release, and updates the Homebrew Cask formula automatically.
+Tag a version and push — GitHub Actions builds the `.app` bundle, creates a GitHub Release with both `.zip` and `.dmg` artifacts, and updates the Homebrew Cask formula automatically.
 
 ```bash
-git tag v0.6.0
+git tag v0.8.0
 git push --tags
 ```
 

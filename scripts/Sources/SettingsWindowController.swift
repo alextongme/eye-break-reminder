@@ -35,6 +35,7 @@ class SettingsWindowController: NSObject {
     var longBreakDurationLabel: NSTextField!
     var strictToggle: NSSwitch!
     var appExclusionToggle: NSSwitch!
+    var autoUpdateToggle: NSSwitch!
 
     private let W: CGFloat = 740
     private let H: CGFloat = 740
@@ -200,6 +201,11 @@ class SettingsWindowController: NSObject {
             target: self, action: #selector(appExclusionToggleChanged))
         y -= rowStep
 
+        autoUpdateToggle = addToggleRow(
+            "Check for updates", x: rightX, y: y, to: cv,
+            target: self, action: #selector(autoUpdateToggleChanged))
+        y -= rowStep
+
         // ── Restore Defaults button (bottom center) ──
         let restoreBtn = HoverLink(
             "Restore Defaults",
@@ -332,6 +338,7 @@ class SettingsWindowController: NSObject {
         longBreakToggle.state = prefs.longBreakEnabled ? .on : .off
         strictToggle.state = prefs.strictMode ? .on : .off
         appExclusionToggle.state = prefs.appExclusionEnabled ? .on : .off
+        autoUpdateToggle.state = prefs.autoUpdateEnabled ? .on : .off
         longBreakEverySlider.intValue = Int32(prefs.longBreakEveryN)
         longBreakEveryLabel.stringValue = "\(prefs.longBreakEveryN) eye breaks"
 
@@ -424,6 +431,9 @@ class SettingsWindowController: NSObject {
         Preferences.shared.appExclusionEnabled = appExclusionToggle.state == .on
     }
 
+    @objc func autoUpdateToggleChanged() {
+        Preferences.shared.autoUpdateEnabled = autoUpdateToggle.state == .on
+    }
 
     @objc func restoreDefaults() {
         let domain = Bundle.main.bundleIdentifier ?? "com.counttongula.eyebreak"

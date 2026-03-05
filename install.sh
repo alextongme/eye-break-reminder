@@ -63,6 +63,9 @@ cp "$REPO_DIR/assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 # Symlink assets into bundle Resources so assetPath() finds them when launched via open
 ln -sf "$REPO_DIR/assets" "$APP_BUNDLE/Contents/Resources/assets"
 
+# Derive version from git tag
+APP_VERSION=$(git -C "$REPO_DIR" describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || echo "dev")
+
 # Info.plist
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -75,6 +78,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
     <string>$APP_NAME</string>
     <key>CFBundleIdentifier</key>
     <string>$AGENT_LABEL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>$APP_VERSION</string>
     <key>CFBundleExecutable</key>
     <string>eye_break_ui</string>
     <key>CFBundleIconFile</key>
@@ -106,7 +111,6 @@ fi
 echo ""
 echo "  🦇 Count Tongula will remind you to rest your eyes."
 echo "     Menu bar icon: 🦇 with countdown timer."
-echo "     Keyboard shortcuts: Cmd+Shift+B (break now), Cmd+Shift+P (pause)."
 echo ""
 echo "  To uninstall:  ./uninstall.sh"
 echo ""

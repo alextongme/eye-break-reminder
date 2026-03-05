@@ -65,6 +65,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
     private var isOnCompleteScreen = false
     private var animationFiles: [String] = []
     private var unusedAnimations: [String] = []
+    private var currentAnimationPath: String?
     private var escMonitor: Any?
     private var wakeObserver: NSObjectProtocol?
     private var companions: [(window: NSWindow, views: CompanionViews)] = []
@@ -418,6 +419,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             unusedAnimations = animationFiles.shuffled()
         }
         let path = unusedAnimations.removeLast()
+        currentAnimationPath = path
         if let animation = LottieAnimation.filepath(path) {
             lv.animation = animation
             lv.play()
@@ -1375,7 +1377,7 @@ class BreakWindowController: NSObject, NSWindowDelegate {
         v.progressBar.isHidden = true
         v.enterHint.isHidden = true
         v.lottieView?.isHidden = false
-        loadRandomAnimation(into: v.lottieView)
+        loadCurrentAnimation(into: v.lottieView)
 
         v.primaryBtn.setLabel("Start Break")
         v.primaryBtn.isHidden = false
@@ -1398,16 +1400,27 @@ class BreakWindowController: NSObject, NSWindowDelegate {
     private func syncCompanionsToPrompt() {
         for c in companions {
             syncCompanion(c.views, toPromptFor: breakType)
+            resizeCompanion(c.window, to: fullHeight)
         }
     }
 
+    private func resizeCompanion(_ win: NSWindow, to height: CGFloat) {
+        guard let screen = win.screen ?? NSScreen.main else { return }
+        let sf = screen.visibleFrame
+        var frame = win.frame
+        frame.size.height = height
+        frame.origin.x = sf.minX + (sf.width - frame.width) / 2
+        frame.origin.y = sf.minY + (sf.height - frame.height) / 2
+        win.setFrame(frame, display: true)
+    }
+
     private func syncCompanionsToCountdown() {
-        let quoteList = (breakType == .long) ? Quotes.longBreak : Quotes.countdown
         let isStrict = Preferences.shared.strictMode
+        let targetHeight = countdownFittingHeight()
         for c in companions {
             let v = c.views
-            v.heading.stringValue = Quotes.random(quoteList)
-            v.heading.textColor = Drac.purple
+            v.heading.stringValue = heading.stringValue
+            v.heading.textColor = heading.textColor
             v.body.isHidden = true
             v.detail.isHidden = true
             v.countdownLbl.isHidden = false
@@ -1421,6 +1434,8 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             v.secondaryBtn.isHidden = true
             v.dismissBtn.isHidden = isStrict
             v.escHint.isHidden = isStrict
+
+            resizeCompanion(c.window, to: targetHeight)
         }
         updateCompanionCountdowns()
     }
@@ -1445,42 +1460,30 @@ class BreakWindowController: NSObject, NSWindowDelegate {
     private func syncCompanionsToComplete(milestone: Bool, milestoneMsg: String?) {
         for c in companions {
             let v = c.views
-            if milestone {
-                v.heading.stringValue = "🏆 Milestone Reached!"
-                v.heading.textColor = Drac.orange
-                v.body.stringValue = milestoneMsg ?? ""
-                v.body.textColor = Drac.pink
-                v.detail.stringValue = "Streak: \(Statistics.shared.nextStreak) breaks"
-                v.detail.textColor = Drac.yellow
+            v.heading.stringValue = heading.stringValue
+            v.heading.textColor = heading.textColor
+            v.body.stringValue = body.stringValue
+            v.body.textColor = body.textColor
+            v.detail.stringValue = detail.stringValue
+            v.detail.textColor = detail.textColor
 
-                let cv = c.window.contentView!
-                cv.layer?.backgroundColor = NSColor(srgbRed: 0x30/255.0, green: 0x2B/255.0, blue: 0x44/255.0, alpha: 1).cgColor
-                cv.layer?.borderWidth = 2
-                cv.layer?.borderColor = Drac.orange.cgColor
-                cv.layer?.shadowColor = Drac.orange.cgColor
-                cv.layer?.shadowRadius = 12
-                cv.layer?.shadowOpacity = 0.6
-                cv.layer?.shadowOffset = .zero
-            } else {
-                v.heading.stringValue = "Break complete!"
-                v.heading.textColor = Drac.green
-                v.body.stringValue = Quotes.random(Quotes.complete)
-                v.body.textColor = Drac.foreground
-                v.detail.stringValue = "You may return to your screen."
-                v.detail.textColor = Drac.foreground
+            let cv = c.window.contentView!
+            let primaryCV = window.contentView!
+            cv.layer?.backgroundColor = primaryCV.layer?.backgroundColor
+            cv.layer?.borderWidth = primaryCV.layer?.borderWidth ?? 0
+            cv.layer?.borderColor = primaryCV.layer?.borderColor
+            cv.layer?.shadowColor = primaryCV.layer?.shadowColor
+            cv.layer?.shadowRadius = primaryCV.layer?.shadowRadius ?? 0
+            cv.layer?.shadowOpacity = primaryCV.layer?.shadowOpacity ?? 0
+            cv.layer?.shadowOffset = primaryCV.layer?.shadowOffset ?? .zero
 
-                let cv = c.window.contentView!
-                cv.layer?.backgroundColor = Drac.background.cgColor
-                cv.layer?.borderWidth = 0
-                cv.layer?.shadowOpacity = 0
-            }
             v.body.isHidden = false
             v.detail.isHidden = false
             v.countdownLbl.isHidden = true
             v.countdownSub.isHidden = true
             v.progressBar.isHidden = true
             v.lottieView?.isHidden = false
-            loadRandomAnimation(into: v.lottieView)
+            loadCurrentAnimation(into: v.lottieView)
 
             v.primaryBtn.setLabel("Thanks, Count!")
             v.primaryBtn.isHidden = false
@@ -1490,12 +1493,13 @@ class BreakWindowController: NSObject, NSWindowDelegate {
             v.dismissBtn.isHidden = true
             v.escHint.isHidden = true
             v.enterHint.isHidden = false
+
+            resizeCompanion(c.window, to: fullHeight)
         }
     }
 
-    private func loadRandomAnimation(into lottieView: LottieAnimationView?) {
-        guard let lv = lottieView, !animationFiles.isEmpty else { return }
-        let path = animationFiles.randomElement()!
+    private func loadCurrentAnimation(into lottieView: LottieAnimationView?) {
+        guard let lv = lottieView, let path = currentAnimationPath else { return }
         if let animation = LottieAnimation.filepath(path) {
             lv.animation = animation
             lv.play()

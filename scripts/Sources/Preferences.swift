@@ -14,6 +14,7 @@ class Preferences {
         case longBreakEnabled, longBreakEveryN, longBreakDuration
         case hasCompletedOnboarding
         case strictMode, appExclusionEnabled, excludedBundleIDs
+        case autoUpdateEnabled, lastUpdateCheck, skippedVersion
     }
 
     init() { registerDefaults() }
@@ -40,6 +41,9 @@ class Preferences {
             Key.strictMode.rawValue: false,
             Key.appExclusionEnabled.rawValue: true,
             Key.excludedBundleIDs.rawValue: ["us.zoom.xos", "com.apple.iWork.Keynote", "com.microsoft.Powerpoint", "com.microsoft.teams2", "com.microsoft.teams", "com.cisco.webexmeetingsapp", "com.apple.FaceTime", "com.obsproject.obs-studio", "com.apple.QuickTimePlayerX", "com.apple.screencaptureui", "com.loom.desktop", "com.getcleanshot.app", "com.crowdcafe.screenflow10"],
+            Key.autoUpdateEnabled.rawValue: true,
+            Key.lastUpdateCheck.rawValue: Date.distantPast.timeIntervalSinceReferenceDate,
+            Key.skippedVersion.rawValue: "",
         ])
     }
 
@@ -145,6 +149,21 @@ class Preferences {
     var excludedBundleIDs: [String] {
         get { defaults.stringArray(forKey: Key.excludedBundleIDs.rawValue) ?? [] }
         set { defaults.set(newValue, forKey: Key.excludedBundleIDs.rawValue); notify() }
+    }
+
+    var autoUpdateEnabled: Bool {
+        get { defaults.bool(forKey: Key.autoUpdateEnabled.rawValue) }
+        set { defaults.set(newValue, forKey: Key.autoUpdateEnabled.rawValue); notify() }
+    }
+
+    var lastUpdateCheck: TimeInterval {
+        get { defaults.double(forKey: Key.lastUpdateCheck.rawValue) }
+        set { defaults.set(newValue, forKey: Key.lastUpdateCheck.rawValue) }
+    }
+
+    var skippedVersion: String {
+        get { defaults.string(forKey: Key.skippedVersion.rawValue) ?? "" }
+        set { defaults.set(newValue, forKey: Key.skippedVersion.rawValue) }
     }
 
 }

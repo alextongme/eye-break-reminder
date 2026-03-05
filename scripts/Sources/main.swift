@@ -1,5 +1,7 @@
 import Cocoa
 
+let appVersion = "0.8.0"
+
 // ── Single-instance guard ────────────────────────────────────────────
 // Skip lock for development/preview modes so they don't block normal app operation.
 let devModes = ["--gallery", "--demo", "--screenshot", "--screenshot-all", "--screenshot-long", "--trigger-eye", "--trigger-long"]

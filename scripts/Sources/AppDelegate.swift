@@ -22,6 +22,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate, NSMenuD
     var settingsController: SettingsWindowController?
     var onboardingController: OnboardingController?
     var statsChartController: StatsChartWindowController?
+    var updateAlertController: UpdateAlertController?
 
     private var lastTickWasSpecial = false
 
@@ -62,10 +63,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate, NSMenuD
         )
 
 
+        setupUpdateChecker()
+
         if !Preferences.shared.hasCompletedOnboarding {
             showOnboarding()
         } else {
             startTimer()
+            UpdateChecker.shared.checkIfNeeded()
         }
     }
 
@@ -107,18 +111,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate, NSMenuD
 
         menu.addItem(NSMenuItem.separator())
 
-        pauseMenuItem = menuItem("Pause", emoji: "⏸️", action: #selector(togglePause), key: "p")
-        pauseMenuItem.keyEquivalentModifierMask = [.command, .shift]
+        pauseMenuItem = menuItem("Pause", emoji: "⏸️", action: #selector(togglePause))
         menu.addItem(pauseMenuItem)
 
-        skipMenuItem = menuItem("Take a Break Now", emoji: "👁", action: #selector(skipToBreak), key: "b")
-        skipMenuItem.keyEquivalentModifierMask = [.command, .shift]
+        skipMenuItem = menuItem("Take a Break Now", emoji: "👁", action: #selector(skipToBreak))
         menu.addItem(skipMenuItem)
 
         menu.addItem(NSMenuItem.separator())
 
         settingsMenuItem = menuItem("Settings...", emoji: "⚙️", action: #selector(showSettings))
         menu.addItem(settingsMenuItem)
+
+        menu.addItem(menuItem("Check for Updates...", emoji: "🔄", action: #selector(checkForUpdates)))
 
         menu.addItem(NSMenuItem.separator())
 
@@ -178,6 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate, NSMenuD
         if let w = statsChartController?.window, w.isVisible { return true }
         if let w = feedbackController?.window, w.isVisible { return true }
         if let w = onboardingController?.window, w.isVisible { return true }
+        if let w = updateAlertController?.window, w.isVisible { return true }
         return false
     }
 
@@ -439,7 +444,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate, NSMenuD
         feedbackController = FeedbackWindowController(mode: .feature)
     }
 
+    @objc func checkForUpdates() {
+        UpdateChecker.shared.checkNow()
+    }
+
     @objc func quitApp() {
+        UpdateChecker.shared.stopTimer()
         IdleDetector.shared.stopMonitoring()
         NSApp.terminate(nil)
     }
@@ -458,6 +468,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, BreakWindowDelegate, NSMenuD
         onboardingController = nil
         if breakTimer == nil {
             startTimer()
+        }
+        UpdateChecker.shared.checkIfNeeded()
+    }
+
+    private func setupUpdateChecker() {
+        UpdateChecker.shared.onUpdateAvailable = { [weak self] release, currentVersion in
+            self?.updateAlertController = UpdateAlertController(release: release, currentVersion: currentVersion)
+        }
+        UpdateChecker.shared.onUpToDate = { [weak self] in
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? appVersion
+            self?.updateAlertController = UpdateAlertController(currentVersion: version)
         }
     }
 
