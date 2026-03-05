@@ -29,11 +29,21 @@ echo ""
 rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
-# ── Compile ──
-info "Compiling (Swift Package Manager) ..."
-swift build -c release --arch arm64 --arch x86_64 --package-path "$REPO_DIR" 2>&1
-cp "$REPO_DIR/.build/release/eye_break_ui" "$BUILD_DIR/eye_break_ui"
-ok "Binary compiled"
+# ── Compile universal binary (arm64 + x86_64) ──
+info "Compiling arm64 ..."
+swift build -c release --arch arm64 --package-path "$REPO_DIR" 2>&1
+ok "arm64 compiled"
+
+info "Compiling x86_64 ..."
+swift build -c release --arch x86_64 --package-path "$REPO_DIR" 2>&1
+ok "x86_64 compiled"
+
+info "Creating universal binary ..."
+lipo -create \
+    "$REPO_DIR/.build/arm64-apple-macosx/release/eye_break_ui" \
+    "$REPO_DIR/.build/x86_64-apple-macosx/release/eye_break_ui" \
+    -output "$BUILD_DIR/eye_break_ui"
+ok "Universal binary created"
 
 # ── Build .app bundle ──
 info "Building app bundle ..."
