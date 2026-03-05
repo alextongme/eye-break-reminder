@@ -206,6 +206,10 @@ git push --tags
 - macOS 12+ (Monterey or later)
 - Xcode Command Line Tools (for building from source only)
 
+## Roadmap
+
+See [TODO.md](TODO.md) for planned features and what's in progress.
+
 ## License
 
 MIT

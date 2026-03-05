@@ -1,6 +1,6 @@
 import Cocoa
 
-let appVersion = "0.10.0"
+let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "dev"
 
 // ── Single-instance guard ────────────────────────────────────────────
 // Skip lock for development/preview modes so they don't block normal app operation.
